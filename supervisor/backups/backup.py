@@ -315,7 +315,11 @@ class Backup(CoreSysAttributes):
         def _extract_backup():
             """Extract a backup."""
             with tarfile.open(self.tarfile, "r:") as tar:
-                tar.extractall(path=self._tmp.name, members=secure_path(tar))
+                tar.extractall(
+                    path=self._tmp.name,
+                    members=secure_path(tar),
+                    filter="fully_trusted",
+                )
 
         await self.sys_run_in_executor(_extract_backup)
 
@@ -532,7 +536,9 @@ class Backup(CoreSysAttributes):
                         key=self._key, redacted_marker=None,
                         bufsize=BUF_SIZE,
                     ) as tar_file:
-                        tar_file.extractall(path=origin_dir, members=tar_file)
+                        tar_file.extractall(
+                            path=origin_dir, members=tar_file, filter="fully_trusted"
+                        )
                     _LOGGER.info("Restore folder %s done", name)
                 except (tarfile.TarError, OSError) as err:
                     _LOGGER.warning("Can't restore folder %s: %s", name, err)
