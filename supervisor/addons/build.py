@@ -134,7 +134,7 @@ class AddonBuild(CoreSysAttributes):
         # Dict - per-arch base images in build config
         if self.arch not in self._build_config[ATTR_BUILD_FROM]:
             raise HassioArchNotFound(
-                f"Add-on {self.addon.slug} is not supported on {self.arch}"
+                f"App {self.addon.slug} is not supported on {self.arch}"
             )
         return self._build_config[ATTR_BUILD_FROM][self.arch]
 
