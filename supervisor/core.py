@@ -16,7 +16,7 @@ from .const import (
     CoreState,
 )
 from .coresys import CoreSys, CoreSysAttributes
-from .dbus.const import StopUnitMode
+from .dbus.const import StopUnitMode, UnitActiveState
 from .exceptions import (
     HassioError,
     HomeAssistantCrashError,
@@ -432,18 +432,31 @@ class Core(CoreSysAttributes):
 
         if self.sys_host.info.use_ntp:
             # Stop timesyncd if NTP is enabled, as set_time is blocked while it runs.
+            # timedated rejects set_time while an NTP unit is active. We listen
+            # for the unit's ActiveState to become inactive before proceeding.
             _LOGGER.info("Stopping systemd-timesyncd to allow manual time adjustment")
-            await self.sys_dbus.systemd.stop_unit(
-                "systemd-timesyncd.service", StopUnitMode.REPLACE
+            timesync_unit = await self.sys_dbus.systemd.get_unit(
+                "systemd-timesyncd.service"
             )
-            # Keep service disabled and create a repair issue
+            try:
+                async with asyncio.timeout(10):
+                    await self.sys_dbus.systemd.stop_unit(
+                        "systemd-timesyncd.service", StopUnitMode.REPLACE
+                    )
+                    await timesync_unit.wait_for_active_state(
+                        {UnitActiveState.INACTIVE}
+                    )
+            except TimeoutError:
+                _LOGGER.warning(
+                    "Timeout waiting for systemd-timesyncd to stop, "
+                    "attempting time sync anyway"
+                )
+            # Create a repair issue so the user knows NTP was disabled
             self.sys_resolution.create_issue(
                 IssueType.NTP_SYNC_FAILED,
                 ContextType.SYSTEM,
                 suggestions=[SuggestionType.ENABLE_NTP],
             )
-            # We need to wait a bit for the service to stop.
-            await asyncio.sleep(1)
 
         await self.sys_host.control.set_datetime(data.dt_utc)
         await self.sys_supervisor.check_connectivity()
