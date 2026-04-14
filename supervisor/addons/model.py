@@ -1,4 +1,4 @@
-"""Init file for Supervisor add-ons."""
+"""Init file for Supervisor apps."""
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -82,19 +82,19 @@ from ..const import (
     SECURITY_DEFAULT,
     SECURITY_DISABLE,
     SECURITY_PROFILE,
-    AddonBoot,
-    AddonBootConfig,
-    AddonStage,
-    AddonStartup,
+    AppBoot,
+    AppBootConfig,
+    AppStage,
+    AppStartup,
     CpuArch,
 )
 from ..coresys import CoreSys
 from ..docker.const import Capabilities
 from ..exceptions import (
-    AddonNotSupportedArchitectureError,
-    AddonNotSupportedError,
-    AddonNotSupportedHomeAssistantVersionError,
-    AddonNotSupportedMachineTypeError,
+    AppNotSupportedArchitectureError,
+    AppNotSupportedError,
+    AppNotSupportedHomeAssistantVersionError,
+    AppNotSupportedMachineTypeError,
     HassioArchNotFound,
 )
 from ..jobs.const import JOB_GROUP_ADDON
@@ -107,10 +107,10 @@ from .const import (
     ATTR_BREAKING_VERSIONS,
     ATTR_PATH,
     ATTR_READ_ONLY,
-    AddonBackupMode,
+    AppBackupMode,
     MappingType,
 )
-from .options import AddonOptions, UiOptions
+from .options import AppOptions, UiOptions
 from .validate import RE_SERVICE
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -118,8 +118,8 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 Data = dict[str, Any]
 
 
-class AddonModel(JobGroup, ABC):
-    """Add-on Data layout."""
+class AppModel(JobGroup, ABC):
+    """App Data layout."""
 
     def __init__(self, coresys: CoreSys, slug: str):
         """Initialize data holder."""
@@ -135,21 +135,21 @@ class AddonModel(JobGroup, ABC):
     @property
     @abstractmethod
     def data(self) -> Data:
-        """Return add-on config/data."""
+        """Return app config/data."""
 
     @property
     @abstractmethod
     def is_installed(self) -> bool:
-        """Return True if an add-on is installed."""
+        """Return True if an app is installed."""
 
     @property
     @abstractmethod
     def is_detached(self) -> bool:
-        """Return True if add-on is detached."""
+        """Return True if app is detached."""
 
     @property
     def available(self) -> bool:
-        """Return True if this add-on is available on this platform."""
+        """Return True if this app is available on this platform."""
         return self._available(self.data)
 
     @property
@@ -158,14 +158,14 @@ class AddonModel(JobGroup, ABC):
         return self.data[ATTR_OPTIONS]
 
     @property
-    def boot_config(self) -> AddonBootConfig:
+    def boot_config(self) -> AppBootConfig:
         """Return boot config."""
         return self.data[ATTR_BOOT]
 
     @property
-    def boot(self) -> AddonBoot:
+    def boot(self) -> AppBoot:
         """Return boot config with prio local settings unless config is forced."""
-        return AddonBoot(self.data[ATTR_BOOT])
+        return AppBoot(self.data[ATTR_BOOT])
 
     @property
     def auto_update(self) -> bool | None:
@@ -174,27 +174,27 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def name(self) -> str:
-        """Return name of add-on."""
+        """Return name of app."""
         return self.data[ATTR_NAME]
 
     @property
     def hostname(self) -> str:
-        """Return slug/id of add-on."""
+        """Return slug/id of app."""
         return self.slug.replace("_", "-")
 
     @property
     def dns(self) -> list[str]:
-        """Return list of DNS name for that add-on."""
+        """Return list of DNS name for that app."""
         return []
 
     @property
     def timeout(self) -> int:
-        """Return timeout of addon for docker stop."""
+        """Return timeout of app for docker stop."""
         return self.data[ATTR_TIMEOUT]
 
     @property
     def uuid(self) -> str | None:
-        """Return an API token for this add-on."""
+        """Return an API token for this app."""
         return None
 
     @property
@@ -214,22 +214,22 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def description(self) -> str:
-        """Return description of add-on."""
+        """Return description of app."""
         return self.data[ATTR_DESCRIPTON]
 
     @property
     def repository(self) -> str:
-        """Return repository of add-on."""
+        """Return repository of app."""
         return self.data[ATTR_REPOSITORY]
 
     @property
     def translations(self) -> dict:
-        """Return add-on translations."""
+        """Return app translations."""
         return self.data[ATTR_TRANSLATIONS]
 
     @property
     def latest_version(self) -> AwesomeVersion:
-        """Return latest version of add-on."""
+        """Return latest version of app."""
         return self.data[ATTR_VERSION]
 
     @property
@@ -239,17 +239,17 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def version(self) -> AwesomeVersion:
-        """Return version of add-on."""
+        """Return version of app."""
         return self.data[ATTR_VERSION]
 
     @property
     def protected(self) -> bool:
-        """Return if add-on is in protected mode."""
+        """Return if app is in protected mode."""
         return True
 
     @property
-    def startup(self) -> AddonStartup:
-        """Return startup type of add-on."""
+    def startup(self) -> AppStartup:
+        """Return startup type of app."""
         return self.data[ATTR_STARTUP]
 
     @property
@@ -260,8 +260,8 @@ class AddonModel(JobGroup, ABC):
         return False
 
     @property
-    def stage(self) -> AddonStage:
-        """Return stage mode of add-on."""
+    def stage(self) -> AppStage:
+        """Return stage mode of app."""
         return self.data[ATTR_STAGE]
 
     @property
@@ -289,7 +289,7 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def ports(self) -> dict[str, int | None] | None:
-        """Return ports of add-on."""
+        """Return ports of app."""
         return self.data.get(ATTR_PORTS)
 
     @property
@@ -329,37 +329,37 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def host_network(self) -> bool:
-        """Return True if add-on run on host network."""
+        """Return True if app run on host network."""
         return self.data[ATTR_HOST_NETWORK]
 
     @property
     def host_pid(self) -> bool:
-        """Return True if add-on run on host PID namespace."""
+        """Return True if app run on host PID namespace."""
         return self.data[ATTR_HOST_PID]
 
     @property
     def host_ipc(self) -> bool:
-        """Return True if add-on run on host IPC namespace."""
+        """Return True if app run on host IPC namespace."""
         return self.data[ATTR_HOST_IPC]
 
     @property
     def host_uts(self) -> bool:
-        """Return True if add-on run on host UTS namespace."""
+        """Return True if app run on host UTS namespace."""
         return self.data[ATTR_HOST_UTS]
 
     @property
     def host_dbus(self) -> bool:
-        """Return True if add-on run on host D-BUS."""
+        """Return True if app run on host D-BUS."""
         return self.data[ATTR_HOST_DBUS]
 
     @property
     def static_devices(self) -> list[Path]:
-        """Return static devices of add-on."""
+        """Return static devices of app."""
         return [Path(node) for node in self.data.get(ATTR_DEVICES, [])]
 
     @property
     def environment(self) -> dict[str, str] | None:
-        """Return environment of add-on."""
+        """Return environment of app."""
         return self.data.get(ATTR_ENVIRONMENT)
 
     @property
@@ -378,22 +378,22 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def legacy(self) -> bool:
-        """Return if the add-on don't support Home Assistant labels."""
+        """Return if the app don't support Home Assistant labels."""
         return self.data[ATTR_LEGACY]
 
     @property
     def access_docker_api(self) -> bool:
-        """Return if the add-on need read-only Docker API access."""
+        """Return if the app need read-only Docker API access."""
         return self.data[ATTR_DOCKER_API]
 
     @property
     def access_hassio_api(self) -> bool:
-        """Return True if the add-on access to Supervisor REASTful API."""
+        """Return True if the app access to Supervisor REASTful API."""
         return self.data[ATTR_HASSIO_API]
 
     @property
     def access_homeassistant_api(self) -> bool:
-        """Return True if the add-on access to Home Assistant API proxy."""
+        """Return True if the app access to Home Assistant API proxy."""
         return self.data[ATTR_HOMEASSISTANT_API]
 
     @property
@@ -417,28 +417,28 @@ class AddonModel(JobGroup, ABC):
         return self.data.get(ATTR_BACKUP_POST)
 
     @property
-    def backup_mode(self) -> AddonBackupMode:
+    def backup_mode(self) -> AppBackupMode:
         """Return if backup is hot/cold."""
         return self.data[ATTR_BACKUP]
 
     @property
     def default_init(self) -> bool:
-        """Return True if the add-on have no own init."""
+        """Return True if the app have no own init."""
         return self.data[ATTR_INIT]
 
     @property
     def with_stdin(self) -> bool:
-        """Return True if the add-on access use stdin input."""
+        """Return True if the app access use stdin input."""
         return self.data[ATTR_STDIN]
 
     @property
     def with_ingress(self) -> bool:
-        """Return True if the add-on access support ingress."""
+        """Return True if the app access support ingress."""
         return self.data[ATTR_INGRESS]
 
     @property
     def ingress_panel(self) -> bool | None:
-        """Return True if the add-on access support ingress."""
+        """Return True if the app access support ingress."""
         return None
 
     @property
@@ -448,12 +448,12 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def with_gpio(self) -> bool:
-        """Return True if the add-on access to GPIO interface."""
+        """Return True if the app access to GPIO interface."""
         return self.data[ATTR_GPIO]
 
     @property
     def with_usb(self) -> bool:
-        """Return True if the add-on need USB access."""
+        """Return True if the app need USB access."""
         return self.data[ATTR_USB]
 
     @property
@@ -463,7 +463,7 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def with_udev(self) -> bool:
-        """Return True if the add-on have his own udev."""
+        """Return True if the app have his own udev."""
         return self.data[ATTR_UDEV]
 
     @property
@@ -473,52 +473,52 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def with_kernel_modules(self) -> bool:
-        """Return True if the add-on access to kernel modules."""
+        """Return True if the app access to kernel modules."""
         return self.data[ATTR_KERNEL_MODULES]
 
     @property
     def with_realtime(self) -> bool:
-        """Return True if the add-on need realtime schedule functions."""
+        """Return True if the app need realtime schedule functions."""
         return self.data[ATTR_REALTIME]
 
     @property
     def with_full_access(self) -> bool:
-        """Return True if the add-on want full access to hardware."""
+        """Return True if the app want full access to hardware."""
         return self.data[ATTR_FULL_ACCESS]
 
     @property
     def with_devicetree(self) -> bool:
-        """Return True if the add-on read access to devicetree."""
+        """Return True if the app read access to devicetree."""
         return self.data[ATTR_DEVICETREE]
 
     @property
     def with_tmpfs(self) -> bool:
-        """Return if tmp is in memory of add-on."""
+        """Return if tmp is in memory of app."""
         return self.data[ATTR_TMPFS]
 
     @property
     def access_auth_api(self) -> bool:
-        """Return True if the add-on access to login/auth backend."""
+        """Return True if the app access to login/auth backend."""
         return self.data[ATTR_AUTH_API]
 
     @property
     def with_audio(self) -> bool:
-        """Return True if the add-on access to audio."""
+        """Return True if the app access to audio."""
         return self.data[ATTR_AUDIO]
 
     @property
     def with_video(self) -> bool:
-        """Return True if the add-on access to video."""
+        """Return True if the app access to video."""
         return self.data[ATTR_VIDEO]
 
     @property
     def homeassistant_version(self) -> AwesomeVersion | None:
-        """Return min Home Assistant version they needed by Add-on."""
+        """Return min Home Assistant version they needed by App."""
         return self.data.get(ATTR_HOMEASSISTANT)
 
     @property
     def url(self) -> str | None:
-        """Return URL of add-on."""
+        """Return URL of app."""
         return self.data.get(ATTR_URL)
 
     @property
@@ -548,17 +548,17 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def has_deprecated_arch(self) -> bool:
-        """Return True if add-on includes deprecated architectures."""
+        """Return True if app includes deprecated architectures."""
         return any(arch in ARCH_DEPRECATED for arch in self.supported_arch)
 
     @property
     def has_supported_arch(self) -> bool:
-        """Return True if add-on supports any architecture on this system."""
+        """Return True if app supports any architecture on this system."""
         return self.sys_arch.is_supported(self.supported_arch)
 
     @property
     def has_deprecated_machine(self) -> bool:
-        """Return True if add-on includes deprecated machine entries."""
+        """Return True if app includes deprecated machine entries."""
         return any(
             machine.lstrip("!") in MACHINE_DEPRECATED
             for machine in self.supported_machine
@@ -566,7 +566,7 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def has_supported_machine(self) -> bool:
-        """Return True if add-on supports this machine."""
+        """Return True if app supports this machine."""
         if not (machine_types := self.supported_machine):
             return True
 
@@ -582,7 +582,7 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def arch(self) -> CpuArch:
-        """Return architecture to use for the addon's image."""
+        """Return architecture to use for the app's image."""
         return self.sys_arch.match(self.data[ATTR_ARCH])
 
     @property
@@ -592,12 +592,12 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def need_build(self) -> bool:
-        """Return True if this  add-on need a local build."""
+        """Return True if this  app need a local build."""
         return ATTR_IMAGE not in self.data
 
     @property
     def map_volumes(self) -> dict[MappingType, FolderMapping]:
-        """Return a dict of {MappingType: FolderMapping} from add-on."""
+        """Return a dict of {MappingType: FolderMapping} from app."""
         volumes = {}
         for volume in self.data[ATTR_MAP]:
             volumes[MappingType(volume[ATTR_TYPE])] = FolderMapping(
@@ -608,27 +608,27 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def path_location(self) -> Path:
-        """Return path to this add-on."""
+        """Return path to this app."""
         return Path(self.data[ATTR_LOCATION])
 
     @property
     def path_icon(self) -> Path:
-        """Return path to add-on icon."""
+        """Return path to app icon."""
         return Path(self.path_location, "icon.png")
 
     @property
     def path_logo(self) -> Path:
-        """Return path to add-on logo."""
+        """Return path to app logo."""
         return Path(self.path_location, "logo.png")
 
     @property
     def path_changelog(self) -> Path:
-        """Return path to add-on changelog."""
+        """Return path to app changelog."""
         return Path(self.path_location, "CHANGELOG.md")
 
     @property
     def path_documentation(self) -> Path:
-        """Return path to add-on changelog."""
+        """Return path to app changelog."""
         return Path(self.path_location, "DOCS.md")
 
     @property
@@ -637,17 +637,17 @@ class AddonModel(JobGroup, ABC):
         return Path(self.path_location, "apparmor.txt")
 
     @property
-    def schema(self) -> AddonOptions:
-        """Return Addon options validation object."""
+    def schema(self) -> AppOptions:
+        """Return App options validation object."""
         raw_schema = self.data[ATTR_SCHEMA]
         if isinstance(raw_schema, bool):
             raw_schema = {}
 
-        return AddonOptions(self.coresys, raw_schema, self.name, self.slug)
+        return AppOptions(self.coresys, raw_schema, self.name, self.slug)
 
     @property
     def schema_ui(self) -> list[dict[Any, Any]] | None:
-        """Create a UI schema for add-on options."""
+        """Create a UI schema for app options."""
         raw_schema = self.data[ATTR_SCHEMA]
 
         if isinstance(raw_schema, bool):
@@ -656,7 +656,7 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def with_journald(self) -> bool:
-        """Return True if the add-on accesses the system journal."""
+        """Return True if the app accesses the system journal."""
         return self.data[ATTR_JOURNALD]
 
     @property
@@ -666,7 +666,7 @@ class AddonModel(JobGroup, ABC):
 
     @property
     def breaking_versions(self) -> list[AwesomeVersion]:
-        """Return breaking versions of addon."""
+        """Return breaking versions of app."""
         return self.data[ATTR_BREAKING_VERSIONS]
 
     async def long_description(self) -> str | None:
@@ -696,26 +696,26 @@ class AddonModel(JobGroup, ABC):
         return self.sys_run_in_executor(check_paths)
 
     def validate_availability(self) -> None:
-        """Validate if addon is available for current system."""
+        """Validate if app is available for current system."""
         return self._validate_availability(self.data, logger=_LOGGER.error)
 
     def __eq__(self, other: Any) -> bool:
-        """Compare add-on objects."""
-        if not isinstance(other, AddonModel):
+        """Compare app objects."""
+        if not isinstance(other, AppModel):
             return False
         return self.slug == other.slug
 
     def __hash__(self) -> int:
-        """Hash for add-on objects."""
+        """Hash for app objects."""
         return hash(self.slug)
 
     def _validate_availability(
         self, config, *, logger: Callable[..., None] | None = None
     ) -> None:
-        """Validate if addon is available for current system."""
+        """Validate if app is available for current system."""
         # Architecture
         if not self.sys_arch.is_supported(config[ATTR_ARCH]):
-            raise AddonNotSupportedArchitectureError(
+            raise AppNotSupportedArchitectureError(
                 logger, slug=self.slug, architectures=config[ATTR_ARCH]
             )
 
@@ -724,7 +724,7 @@ class AddonModel(JobGroup, ABC):
         if machine and (
             f"!{self.sys_machine}" in machine or self.sys_machine not in machine
         ):
-            raise AddonNotSupportedMachineTypeError(
+            raise AppNotSupportedMachineTypeError(
                 logger, slug=self.slug, machine_types=machine
             )
 
@@ -734,15 +734,15 @@ class AddonModel(JobGroup, ABC):
             if version and not version_is_new_enough(
                 self.sys_homeassistant.version, version
             ):
-                raise AddonNotSupportedHomeAssistantVersionError(
+                raise AppNotSupportedHomeAssistantVersionError(
                     logger, slug=self.slug, version=str(version)
                 )
 
     def _available(self, config) -> bool:
-        """Return True if this add-on is available on this platform."""
+        """Return True if this app is available on this platform."""
         try:
             self._validate_availability(config)
-        except AddonNotSupportedError:
+        except AppNotSupportedError:
             return False
 
         return True

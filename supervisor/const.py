@@ -106,10 +106,10 @@ ATTR_ACCESS_TOKEN = "access_token"
 ATTR_ACCESSPOINTS = "accesspoints"
 ATTR_ACTIVE = "active"
 ATTR_ACTIVITY_LED = "activity_led"
-ATTR_ADDON = "addon"
-ATTR_ADDONS = "addons"
-ATTR_ADDONS_CUSTOM_LIST = "addons_custom_list"
-ATTR_ADDONS_REPOSITORIES = "addons_repositories"
+ATTR_APP = "addon"
+ATTR_APPS = "addons"
+ATTR_APPS_CUSTOM_LIST = "addons_custom_list"
+ATTR_APPS_REPOSITORIES = "addons_repositories"
 ATTR_ADDR_GEN_MODE = "addr_gen_mode"
 ATTR_ADDRESS = "address"
 ATTR_ADDRESS_DATA = "address-data"
@@ -433,16 +433,16 @@ OBSERVER_PORT = 4357
 DEFAULT_CHUNK_SIZE = 2**16  # 64KiB
 
 
-class AddonBootConfig(StrEnum):
-    """Boot mode config for the add-on."""
+class AppBootConfig(StrEnum):
+    """Boot mode config for the app."""
 
     AUTO = "auto"
     MANUAL = "manual"
     MANUAL_ONLY = "manual_only"
 
 
-class AddonBoot(StrEnum):
-    """Boot mode for the add-on."""
+class AppBoot(StrEnum):
+    """Boot mode for the app."""
 
     AUTO = "auto"
     MANUAL = "manual"
@@ -450,15 +450,15 @@ class AddonBoot(StrEnum):
     @classmethod
     def _missing_(cls, value: object) -> Self | None:
         """Convert 'forced' config values to their counterpart."""
-        if value == AddonBootConfig.MANUAL_ONLY:
+        if value == AppBootConfig.MANUAL_ONLY:
             for member in cls:
-                if member == AddonBoot.MANUAL:
+                if member == AppBoot.MANUAL:
                     return member
         return None
 
 
-class AddonStartup(StrEnum):
-    """Startup types of Add-on."""
+class AppStartup(StrEnum):
+    """Startup types of App."""
 
     INITIALIZE = "initialize"
     SYSTEM = "system"
@@ -467,16 +467,16 @@ class AddonStartup(StrEnum):
     ONCE = "once"
 
 
-class AddonStage(StrEnum):
-    """Stage types of add-on."""
+class AppStage(StrEnum):
+    """Stage types of app."""
 
     STABLE = "stable"
     EXPERIMENTAL = "experimental"
     DEPRECATED = "deprecated"
 
 
-class AddonState(StrEnum):
-    """State of add-on."""
+class AppState(StrEnum):
+    """State of app."""
 
     STARTUP = "startup"
     STARTED = "started"

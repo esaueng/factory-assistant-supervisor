@@ -11,7 +11,7 @@ from .const import (
     ATTR_STARTUP,
     RUN_SUPERVISOR_STATE,
     STARTING_STATES,
-    AddonStartup,
+    AppStartup,
     BusEvent,
     CoreState,
 )
@@ -169,8 +169,8 @@ class Core(CoreSysAttributes):
             self.sys_arch.load(),
             # Load Stores
             self.sys_store.load(),
-            # Load Add-ons
-            self.sys_addons.load(),
+            # Load Apps
+            self.sys_apps.load(),
             # load last available data
             self.sys_backups.load(),
             # load services
@@ -235,8 +235,8 @@ class Core(CoreSysAttributes):
                     return
 
         try:
-            # Start addon mark as initialize
-            await self.sys_addons.boot(AddonStartup.INITIALIZE)
+            # Start app mark as initialize
+            await self.sys_apps.boot(AppStartup.INITIALIZE)
 
             # HomeAssistant is already running, only Supervisor restarted
             if await self.sys_hardware.helper.last_boot() == self.sys_config.last_boot:
@@ -246,11 +246,11 @@ class Core(CoreSysAttributes):
             # reset register services / discovery
             await self.sys_services.reset()
 
-            # start addon mark as system
-            await self.sys_addons.boot(AddonStartup.SYSTEM)
+            # start app mark as system
+            await self.sys_apps.boot(AppStartup.SYSTEM)
 
-            # start addon mark as services
-            await self.sys_addons.boot(AddonStartup.SERVICES)
+            # start app mark as services
+            await self.sys_apps.boot(AppStartup.SERVICES)
 
             # run HomeAssistant
             if (
@@ -279,8 +279,8 @@ class Core(CoreSysAttributes):
                     suggestions=[SuggestionType.EXECUTE_REPAIR],
                 )
 
-            # start addon mark as application
-            await self.sys_addons.boot(AddonStartup.APPLICATION)
+            # start app mark as application
+            await self.sys_apps.boot(AppStartup.APPLICATION)
 
             # store new last boot
             await self._update_last_boot()
@@ -357,8 +357,8 @@ class Core(CoreSysAttributes):
         if self.state == CoreState.RUNNING:
             await self.set_state(CoreState.SHUTDOWN)
 
-        # Shutdown Application Add-ons, using Home Assistant API
-        await self.sys_addons.shutdown(AddonStartup.APPLICATION)
+        # Shutdown Application Apps, using Home Assistant API
+        await self.sys_apps.shutdown(AppStartup.APPLICATION)
 
         # Close Home Assistant
         with suppress(HassioError):
@@ -366,10 +366,10 @@ class Core(CoreSysAttributes):
                 remove_container=remove_homeassistant_container
             )
 
-        # Shutdown System Add-ons
-        await self.sys_addons.shutdown(AddonStartup.SERVICES)
-        await self.sys_addons.shutdown(AddonStartup.SYSTEM)
-        await self.sys_addons.shutdown(AddonStartup.INITIALIZE)
+        # Shutdown System Apps
+        await self.sys_apps.shutdown(AppStartup.SERVICES)
+        await self.sys_apps.shutdown(AppStartup.SYSTEM)
+        await self.sys_apps.shutdown(AppStartup.INITIALIZE)
 
         # Shutdown all Plugins
         if self.state in (CoreState.STOPPING, CoreState.SHUTDOWN):
@@ -470,7 +470,7 @@ class Core(CoreSysAttributes):
         await self.sys_plugins.repair()
 
         # Restore core functionality
-        await self.sys_addons.repair()
+        await self.sys_apps.repair()
         await self.sys_homeassistant.core.repair()
 
         # Tag version for latest

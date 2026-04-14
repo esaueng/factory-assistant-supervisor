@@ -1,10 +1,10 @@
-"""Validate Add-on configs."""
+"""Validate App configs."""
 
 import pytest
 import voluptuous as vol
 
 from supervisor.addons import validate as vd
-from supervisor.addons.const import AddonBackupMode
+from supervisor.addons.const import AppBackupMode
 
 from ..common import load_json_fixture
 
@@ -85,7 +85,7 @@ def test_migration_backup():
     """Migrate snapshot to backup."""
     config = load_json_fixture("basic-addon-config.json")
 
-    config["snapshot"] = AddonBackupMode.HOT
+    config["snapshot"] = AppBackupMode.HOT
     config["snapshot_pre"] = "pre_command"
     config["snapshot_post"] = "post_command"
     config["snapshot_exclude"] = ["excludeed"]
@@ -97,7 +97,7 @@ def test_migration_backup():
     assert valid_config.get("snapshot_post") is None
     assert valid_config.get("snapshot_exclude") is None
 
-    assert valid_config["backup"] == AddonBackupMode.HOT
+    assert valid_config["backup"] == AppBackupMode.HOT
     assert valid_config["backup_pre"] == "pre_command"
     assert valid_config["backup_post"] == "post_command"
     assert valid_config["backup_exclude"] == ["excludeed"]
@@ -350,10 +350,10 @@ def test_watchdog_url():
 
 
 def test_valid_slug():
-    """Test valid and invalid addon slugs."""
+    """Test valid and invalid app slugs."""
     config = load_json_fixture("basic-addon-config.json")
 
-    # All examples pulled from https://analytics.home-assistant.io/addons.json
+    # All examples pulled from https://analytics.home-assistant.io/apps.json
     config["slug"] = "uptime-kuma"
     assert vd.SCHEMA_ADDON_CONFIG(config)
 
@@ -383,7 +383,7 @@ def test_valid_slug():
 
 
 def test_valid_schema():
-    """Test valid and invalid addon slugs."""
+    """Test valid and invalid app slugs."""
     config = load_json_fixture("basic-addon-config.json")
 
     # Basic types

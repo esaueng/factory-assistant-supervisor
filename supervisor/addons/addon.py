@@ -1,4 +1,4 @@
-"""Init file for Supervisor add-ons."""
+"""Init file for Supervisor apps."""
 
 import asyncio
 from collections.abc import Awaitable
@@ -51,30 +51,30 @@ from ..const import (
     ATTR_VERSION_TIMESTAMP,
     ATTR_WATCHDOG,
     DNS_SUFFIX,
-    AddonBoot,
-    AddonBootConfig,
-    AddonStartup,
-    AddonState,
+    AppBoot,
+    AppBootConfig,
+    AppStartup,
+    AppState,
     BusEvent,
 )
 from ..coresys import CoreSys
-from ..docker.addon import DockerAddon
+from ..docker.addon import DockerApp
 from ..docker.const import ContainerState
 from ..docker.manager import ExecReturn
 from ..docker.monitor import DockerContainerStateEvent
 from ..docker.stats import DockerStats
 from ..exceptions import (
-    AddonBackupMetadataInvalidError,
-    AddonBuildFailedUnknownError,
-    AddonConfigurationInvalidError,
-    AddonNotRunningError,
-    AddonNotSupportedError,
-    AddonNotSupportedWriteStdinError,
-    AddonPortConflict,
-    AddonPrePostBackupCommandReturnedError,
-    AddonsError,
-    AddonsJobError,
-    AddonUnknownError,
+    AppBackupMetadataInvalidError,
+    AppBuildFailedUnknownError,
+    AppConfigurationInvalidError,
+    AppNotRunningError,
+    AppNotSupportedError,
+    AppNotSupportedWriteStdinError,
+    AppPortConflict,
+    AppPrePostBackupCommandReturnedError,
+    AppsError,
+    AppsJobError,
+    AppUnknownError,
     BackupInvalidError,
     BackupRestoreUnknownError,
     ConfigurationFileError,
@@ -83,7 +83,7 @@ from ..exceptions import (
     DockerError,
     DockerRegistryAuthError,
     HostAppArmorError,
-    StoreAddonNotFoundError,
+    StoreAppNotFoundError,
 )
 from ..hardware.data import Device
 from ..homeassistant.const import WSEvent
@@ -91,7 +91,7 @@ from ..jobs.const import JobConcurrency, JobThrottle
 from ..jobs.decorator import Job
 from ..resolution.const import ContextType, IssueType, SuggestionType
 from ..resolution.data import Issue
-from ..store.addon import AddonStore
+from ..store.addon import AppStore
 from ..utils import check_port
 from ..utils.apparmor import adjust_profile
 from ..utils.dt import utc_from_timestamp
@@ -102,11 +102,11 @@ from .const import (
     WATCHDOG_RETRY_SECONDS,
     WATCHDOG_THROTTLE_MAX_CALLS,
     WATCHDOG_THROTTLE_PERIOD,
-    AddonBackupMode,
+    AppBackupMode,
     MappingType,
 )
-from .model import AddonModel, Data
-from .options import AddonOptions
+from .model import AppModel, Data
+from .options import AppOptions
 from .utils import remove_data
 from .validate import SCHEMA_ADDON_BACKUP
 
@@ -131,23 +131,23 @@ _OPTIONS_MERGER: Final = Merger(
     type_conflict_strategies=["override"],
 )
 
-# Backups just need to know if an addon was running or not
-# Map other addon states to those two
+# Backups just need to know if an app was running or not
+# Map other app states to those two
 _MAP_ADDON_STATE = {
-    AddonState.STARTUP: AddonState.STARTED,
-    AddonState.ERROR: AddonState.STOPPED,
-    AddonState.UNKNOWN: AddonState.STOPPED,
+    AppState.STARTUP: AppState.STARTED,
+    AppState.ERROR: AppState.STOPPED,
+    AppState.UNKNOWN: AppState.STOPPED,
 }
 
 
-class Addon(AddonModel):
-    """Hold data for add-on inside Supervisor."""
+class App(AppModel):
+    """Hold data for app inside Supervisor."""
 
     def __init__(self, coresys: CoreSys, slug: str):
         """Initialize data holder."""
         super().__init__(coresys, slug)
-        self.instance: DockerAddon = DockerAddon(coresys, self)
-        self._state: AddonState = AddonState.UNKNOWN
+        self.instance: DockerApp = DockerApp(coresys, self)
+        self._state: AppState = AppState.UNKNOWN
         self._manual_stop: bool = False
         self._listeners: list[EventListener] = []
         self._startup_event = asyncio.Event()
@@ -174,30 +174,30 @@ class Addon(AddonModel):
         return self._device_access_missing_issue
 
     @property
-    def state(self) -> AddonState:
-        """Return state of the add-on."""
+    def state(self) -> AppState:
+        """Return state of the app."""
         return self._state
 
     @state.setter
-    def state(self, new_state: AddonState) -> None:
-        """Set the add-on into new state."""
+    def state(self, new_state: AppState) -> None:
+        """Set the app into new state."""
         if self._state == new_state:
             return
         old_state = self._state
         self._state = new_state
 
-        # Signal listeners about addon state change
-        if new_state == AddonState.STARTED or old_state == AddonState.STARTUP:
+        # Signal listeners about app state change
+        if new_state == AppState.STARTED or old_state == AppState.STARTUP:
             self._startup_event.set()
 
         # Dismiss boot failed issue if present and we started
-        if new_state == AddonState.STARTED and (
+        if new_state == AppState.STARTED and (
             issue := self.sys_resolution.get_issue_if_present(self.boot_failed_issue)
         ):
             self.sys_resolution.dismiss_issue(issue)
 
         # Dismiss device access missing issue if present and we stopped
-        if new_state == AddonState.STOPPED and (
+        if new_state == AppState.STOPPED and (
             issue := self.sys_resolution.get_issue_if_present(
                 self.device_access_missing_issue
             )
@@ -260,7 +260,7 @@ class Addon(AddonModel):
             await self.instance.check_image(self.version, default_image, self.arch)
         except DockerError:
             _LOGGER.info("No %s app Docker image %s found", self.slug, self.image)
-            with suppress(DockerError, AddonNotSupportedError):
+            with suppress(DockerError, AppNotSupportedError):
                 await self.instance.install(self.version, default_image, arch=self.arch)
 
         self.persist[ATTR_IMAGE] = default_image
@@ -268,70 +268,70 @@ class Addon(AddonModel):
 
     @property
     def ip_address(self) -> IPv4Address:
-        """Return IP of add-on instance."""
+        """Return IP of app instance."""
         return self.instance.ip_address
 
     @property
     def data(self) -> Data:
-        """Return add-on data/config."""
-        return self.sys_addons.data.system[self.slug]
+        """Return app data/config."""
+        return self.sys_apps.data.system[self.slug]
 
     @property
     def data_store(self) -> Data:
-        """Return add-on data from store."""
-        return self.sys_store.data.addons.get(self.slug, self.data)
+        """Return app data from store."""
+        return self.sys_store.data.apps.get(self.slug, self.data)
 
     @property
-    def addon_store(self) -> AddonStore | None:
-        """Return store representation of addon."""
-        return self.sys_addons.store.get(self.slug)
+    def app_store(self) -> AppStore | None:
+        """Return store representation of app."""
+        return self.sys_apps.store.get(self.slug)
 
     @property
     def persist(self) -> Data:
-        """Return add-on data/config."""
-        return self.sys_addons.data.user[self.slug]
+        """Return app data/config."""
+        return self.sys_apps.data.user[self.slug]
 
     @property
     def is_installed(self) -> bool:
-        """Return True if an add-on is installed."""
+        """Return True if an app is installed."""
         return True
 
     @property
     def is_detached(self) -> bool:
-        """Return True if add-on is detached."""
-        return self.slug not in self.sys_store.data.addons
+        """Return True if app is detached."""
+        return self.slug not in self.sys_store.data.apps
 
     @property
     def with_icon(self) -> bool:
         """Return True if an icon exists."""
-        if self.is_detached or not self.addon_store:
+        if self.is_detached or not self.app_store:
             return super().with_icon
-        return self.addon_store.with_icon
+        return self.app_store.with_icon
 
     @property
     def with_logo(self) -> bool:
         """Return True if a logo exists."""
-        if self.is_detached or not self.addon_store:
+        if self.is_detached or not self.app_store:
             return super().with_logo
-        return self.addon_store.with_logo
+        return self.app_store.with_logo
 
     @property
     def with_changelog(self) -> bool:
         """Return True if a changelog exists."""
-        if self.is_detached or not self.addon_store:
+        if self.is_detached or not self.app_store:
             return super().with_changelog
-        return self.addon_store.with_changelog
+        return self.app_store.with_changelog
 
     @property
     def with_documentation(self) -> bool:
         """Return True if a documentation exists."""
-        if self.is_detached or not self.addon_store:
+        if self.is_detached or not self.app_store:
             return super().with_documentation
-        return self.addon_store.with_documentation
+        return self.app_store.with_documentation
 
     @property
     def available(self) -> bool:
-        """Return True if this add-on is available on this platform."""
+        """Return True if this app is available on this platform."""
         return self._available(self.data_store)
 
     @property
@@ -348,7 +348,7 @@ class Addon(AddonModel):
 
     @property
     def dns(self) -> list[str]:
-        """Return list of DNS name for that add-on."""
+        """Return list of DNS name for that app."""
         return [f"{self.hostname}.{DNS_SUFFIX}"]
 
     @property
@@ -360,23 +360,23 @@ class Addon(AddonModel):
 
     @options.setter
     def options(self, value: dict[str, Any] | None) -> None:
-        """Store user add-on options."""
+        """Store user app options."""
         self.persist[ATTR_OPTIONS] = {} if value is None else deepcopy(value)
 
     @property
-    def boot(self) -> AddonBoot:
+    def boot(self) -> AppBoot:
         """Return boot config with prio local settings unless config is forced."""
-        if self.boot_config == AddonBootConfig.MANUAL_ONLY:
+        if self.boot_config == AppBootConfig.MANUAL_ONLY:
             return super().boot
         return self.persist.get(ATTR_BOOT, super().boot)
 
     @boot.setter
-    def boot(self, value: AddonBoot) -> None:
+    def boot(self, value: AppBoot) -> None:
         """Store user boot options."""
         self.persist[ATTR_BOOT] = value
 
         # Dismiss boot failed issue if present and boot at start disabled
-        if value == AddonBoot.MANUAL and (
+        if value == AppBoot.MANUAL and (
             issue := self.sys_resolution.get_issue_if_present(self._boot_failed_issue)
         ):
             self.sys_resolution.dismiss_issue(issue)
@@ -393,7 +393,7 @@ class Addon(AddonModel):
 
     @property
     def auto_update_available(self) -> bool:
-        """Return if it is safe to auto update addon."""
+        """Return if it is safe to auto update app."""
         if not self.need_update or not self.auto_update:
             return False
 
@@ -421,7 +421,7 @@ class Addon(AddonModel):
     @watchdog.setter
     def watchdog(self, value: bool) -> None:
         """Set watchdog enable/disable."""
-        if value and self.startup == AddonStartup.ONCE:
+        if value and self.startup == AppStartup.ONCE:
             _LOGGER.warning(
                 "Ignoring watchdog for %s because startup type is 'once'", self.slug
             )
@@ -430,7 +430,7 @@ class Addon(AddonModel):
 
     @property
     def system_managed(self) -> bool:
-        """Return True if addon is managed by Home Assistant."""
+        """Return True if app is managed by Home Assistant."""
         return self.persist[ATTR_SYSTEM_MANAGED]
 
     @system_managed.setter
@@ -443,14 +443,14 @@ class Addon(AddonModel):
 
     @property
     def system_managed_config_entry(self) -> str | None:
-        """Return id of config entry managing this addon (if any)."""
+        """Return id of config entry managing this app (if any)."""
         if not self.system_managed:
             return None
         return self.persist.get(ATTR_SYSTEM_MANAGED_CONFIG_ENTRY)
 
     @system_managed_config_entry.setter
     def system_managed_config_entry(self, value: str | None) -> None:
-        """Set ID of config entry managing this addon."""
+        """Set ID of config entry managing this app."""
         if not self.system_managed:
             _LOGGER.warning(
                 "Ignoring system managed config entry for %s because it is not system managed",
@@ -461,7 +461,7 @@ class Addon(AddonModel):
 
     @property
     def uuid(self) -> str:
-        """Return an API token for this add-on."""
+        """Return an API token for this app."""
         return self.persist[ATTR_UUID]
 
     @property
@@ -483,7 +483,7 @@ class Addon(AddonModel):
 
     @property
     def latest_version(self) -> AwesomeVersion:
-        """Return version of add-on."""
+        """Return version of app."""
         return self.data_store[ATTR_VERSION]
 
     @property
@@ -493,22 +493,22 @@ class Addon(AddonModel):
 
     @property
     def protected(self) -> bool:
-        """Return if add-on is in protected mode."""
+        """Return if app is in protected mode."""
         return self.persist[ATTR_PROTECTED]
 
     @protected.setter
     def protected(self, value: bool) -> None:
-        """Set add-on in protected mode."""
+        """Set app in protected mode."""
         self.persist[ATTR_PROTECTED] = value
 
     @property
     def ports(self) -> dict[str, int | None] | None:
-        """Return ports of add-on."""
+        """Return ports of app."""
         return self.persist.get(ATTR_NETWORK, super().ports)
 
     @ports.setter
     def ports(self, value: dict[str, int | None] | None) -> None:
-        """Set custom ports of add-on."""
+        """Set custom ports of app."""
         if value is None:
             self.persist.pop(ATTR_NETWORK, None)
             return
@@ -572,7 +572,7 @@ class Addon(AddonModel):
 
     @property
     def ingress_panel(self) -> bool | None:
-        """Return True if the add-on access support ingress."""
+        """Return True if the app access support ingress."""
         if not self.with_ingress:
             return None
 
@@ -580,7 +580,7 @@ class Addon(AddonModel):
 
     @ingress_panel.setter
     def ingress_panel(self, value: bool) -> None:
-        """Return True if the add-on access support ingress."""
+        """Return True if the app access support ingress."""
         self.persist[ATTR_INGRESS_PANEL] = value
 
     @property
@@ -610,47 +610,47 @@ class Addon(AddonModel):
 
     @property
     def image(self) -> str | None:
-        """Return image name of add-on."""
+        """Return image name of app."""
         return self.persist.get(ATTR_IMAGE)
 
     @property
     def need_build(self) -> bool:
-        """Return True if this  add-on need a local build."""
+        """Return True if this  app need a local build."""
         return ATTR_IMAGE not in self.data
 
     @property
     def latest_need_build(self) -> bool:
-        """Return True if the latest version of the addon needs a local build."""
+        """Return True if the latest version of the app needs a local build."""
         return ATTR_IMAGE not in self.data_store
 
     @property
     def path_data(self) -> Path:
-        """Return add-on data path inside Supervisor."""
-        return Path(self.sys_config.path_addons_data, self.slug)
+        """Return app data path inside Supervisor."""
+        return Path(self.sys_config.path_apps_data, self.slug)
 
     @property
     def path_extern_data(self) -> PurePath:
-        """Return add-on data path external for Docker."""
-        return PurePath(self.sys_config.path_extern_addons_data, self.slug)
+        """Return app data path external for Docker."""
+        return PurePath(self.sys_config.path_extern_apps_data, self.slug)
 
     @property
-    def addon_config_used(self) -> bool:
-        """Add-on is using its public config folder."""
+    def app_config_used(self) -> bool:
+        """App is using its public config folder."""
         return MappingType.ADDON_CONFIG in self.map_volumes
 
     @property
     def path_config(self) -> Path:
-        """Return add-on config path inside Supervisor."""
-        return Path(self.sys_config.path_addon_configs, self.slug)
+        """Return app config path inside Supervisor."""
+        return Path(self.sys_config.path_app_configs, self.slug)
 
     @property
     def path_extern_config(self) -> PurePath:
-        """Return add-on config path external for Docker."""
-        return PurePath(self.sys_config.path_extern_addon_configs, self.slug)
+        """Return app config path external for Docker."""
+        return PurePath(self.sys_config.path_extern_app_configs, self.slug)
 
     @property
     def path_options(self) -> Path:
-        """Return path to add-on options."""
+        """Return path to app options."""
         return Path(self.path_data, "options.json")
 
     @property
@@ -665,7 +665,7 @@ class Addon(AddonModel):
 
     @property
     def devices(self) -> set[Device]:
-        """Extract devices from add-on options."""
+        """Extract devices from app options."""
         options_schema = self.schema
         with suppress(vol.Invalid):
             options_schema.validate(self.options)
@@ -674,7 +674,7 @@ class Addon(AddonModel):
 
     @property
     def pwned(self) -> set[str]:
-        """Extract pwned data for add-on options."""
+        """Extract pwned data for app options."""
         options_schema = self.schema
         with suppress(vol.Invalid):
             options_schema.validate(self.options)
@@ -683,12 +683,12 @@ class Addon(AddonModel):
 
     @property
     def loaded(self) -> bool:
-        """Is add-on loaded."""
+        """Is app loaded."""
         return bool(self._listeners)
 
     async def save_persist(self) -> None:
-        """Save data of add-on."""
-        await self.sys_addons.data.save_data()
+        """Save data of app."""
+        await self.sys_apps.data.save_data()
 
     async def watchdog_application(self) -> bool:
         """Return True if application is running."""
@@ -734,7 +734,7 @@ class Addon(AddonModel):
         return False
 
     async def write_options(self) -> None:
-        """Return True if add-on options is written to data."""
+        """Return True if app options is written to data."""
         # Update secrets for validation
         await self.sys_homeassistant.secrets.reload()
 
@@ -742,27 +742,27 @@ class Addon(AddonModel):
             options = self.schema.validate(self.options)
             await self.sys_run_in_executor(write_json_file, self.path_options, options)
         except vol.Invalid as ex:
-            raise AddonConfigurationInvalidError(
+            raise AppConfigurationInvalidError(
                 _LOGGER.error,
-                addon=self.slug,
+                app=self.slug,
                 validation_error=humanize_error(self.options, ex),
             ) from None
         except ConfigurationFileError as err:
             _LOGGER.error("App %s can't write options", self.slug)
-            raise AddonUnknownError(addon=self.slug) from err
+            raise AppUnknownError(app=self.slug) from err
 
         _LOGGER.debug("App %s write options: %s", self.slug, options)
 
     @Job(
         name="addon_unload",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def unload(self) -> None:
-        """Unload add-on and remove data."""
+        """Unload app and remove data."""
         # Wait for startup wait task to complete before removing data.
         # The container remove/state change resolves _startup_event; this
-        # ensures _wait_for_startup finishes before we touch addon data.
+        # ensures _wait_for_startup finishes before we touch app data.
         if self._wait_for_startup_task:
             await self._wait_for_startup_task
 
@@ -788,15 +788,15 @@ class Addon(AddonModel):
 
     @Job(
         name="addon_install",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def install(self) -> None:
-        """Install and setup this addon."""
-        if not self.addon_store:
-            raise StoreAddonNotFoundError(addon=self.slug)
+        """Install and setup this app."""
+        if not self.app_store:
+            raise StoreAppNotFoundError(app=self.slug)
 
-        await self.sys_addons.data.install(self.addon_store)
+        await self.sys_apps.data.install(self.app_store)
 
         def setup_data():
             if not self.path_data.is_dir():
@@ -813,28 +813,28 @@ class Addon(AddonModel):
         # Install image
         try:
             await self.instance.install(
-                self.latest_version, self.addon_store.image, arch=self.arch
+                self.latest_version, self.app_store.image, arch=self.arch
             )
-        except AddonsError:
-            await self.sys_addons.data.uninstall(self)
+        except AppsError:
+            await self.sys_apps.data.uninstall(self)
             raise
         except DockerBuildError as err:
             _LOGGER.error("Could not build image for app %s: %s", self.slug, err)
-            await self.sys_addons.data.uninstall(self)
-            raise AddonBuildFailedUnknownError(addon=self.slug) from err
+            await self.sys_apps.data.uninstall(self)
+            raise AppBuildFailedUnknownError(app=self.slug) from err
         except DockerRegistryAuthError:
-            await self.sys_addons.data.uninstall(self)
+            await self.sys_apps.data.uninstall(self)
             raise
         except DockerError as err:
             _LOGGER.error("Could not pull image to update app %s: %s", self.slug, err)
-            await self.sys_addons.data.uninstall(self)
-            raise AddonUnknownError(addon=self.slug) from err
+            await self.sys_apps.data.uninstall(self)
+            raise AppUnknownError(app=self.slug) from err
 
         # Finish initialization and set up listeners
         await self.load()
 
-        # Add to addon manager
-        self.sys_addons.local[self.slug] = self
+        # Add to app manager
+        self.sys_apps.local[self.slug] = self
 
         # Reload ingress tokens
         if self.with_ingress:
@@ -842,26 +842,26 @@ class Addon(AddonModel):
 
     @Job(
         name="addon_uninstall",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def uninstall(
         self, *, remove_config: bool, remove_image: bool = True
     ) -> None:
-        """Uninstall and cleanup this addon."""
+        """Uninstall and cleanup this app."""
         try:
             await self.instance.remove(remove_image=remove_image)
         except DockerError as err:
             _LOGGER.error("Could not remove image for app %s: %s", self.slug, err)
-            raise AddonUnknownError(addon=self.slug) from err
+            raise AppUnknownError(app=self.slug) from err
 
-        self.state = AddonState.UNKNOWN
+        self.state = AppState.UNKNOWN
 
         await self.unload()
 
         def cleanup_config_and_audio():
             # Remove config if present and requested
-            if self.addon_config_used and remove_config:
+            if self.app_config_used and remove_config:
                 remove_data(self.path_config)
 
             # Cleanup audio settings
@@ -898,9 +898,9 @@ class Addon(AddonModel):
                 continue
             await service.del_service_data(self)
 
-        # Remove from addon manager
-        self.sys_addons.local.pop(self.slug)
-        await self.sys_addons.data.uninstall(self)
+        # Remove from app manager
+        self.sys_apps.local.pop(self.slug)
+        await self.sys_apps.data.uninstall(self)
 
         # Cleanup Ingress tokens
         if need_ingress_token_cleanup:
@@ -908,43 +908,43 @@ class Addon(AddonModel):
 
     @Job(
         name="addon_update",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def update(self) -> asyncio.Task | None:
-        """Update this addon to latest version.
+        """Update this app to latest version.
 
-        Returns a Task that completes when addon has state 'started' (see start)
+        Returns a Task that completes when app has state 'started' (see start)
         if it was running. Else nothing is returned.
         """
-        if not self.addon_store:
-            raise StoreAddonNotFoundError(addon=self.slug)
+        if not self.app_store:
+            raise StoreAppNotFoundError(app=self.slug)
 
         old_image = self.image
         # Cache data to prevent races with other updates to global
-        store = self.addon_store.clone()
+        store = self.app_store.clone()
 
         try:
             await self.instance.update(store.version, store.image, arch=self.arch)
         except DockerBuildError as err:
             _LOGGER.error("Could not build image for app %s: %s", self.slug, err)
-            raise AddonBuildFailedUnknownError(addon=self.slug) from err
+            raise AppBuildFailedUnknownError(app=self.slug) from err
         except DockerRegistryAuthError:
             raise
         except DockerError as err:
             _LOGGER.error("Could not pull image to update app %s: %s", self.slug, err)
-            raise AddonUnknownError(addon=self.slug) from err
+            raise AppUnknownError(app=self.slug) from err
 
-        # Stop the addon if running
-        if (last_state := self.state) in {AddonState.STARTED, AddonState.STARTUP}:
+        # Stop the app if running
+        if (last_state := self.state) in {AppState.STARTED, AppState.STARTUP}:
             await self.stop()
 
         try:
             _LOGGER.info("App '%s' successfully updated", self.slug)
-            await self.sys_addons.data.update(store)
+            await self.sys_apps.data.update(store)
             await self._check_ingress_port()
 
-            # Reload ingress tokens in case addon gained ingress support
+            # Reload ingress tokens in case app gained ingress support
             if self.with_ingress:
                 await self.sys_ingress.reload()
 
@@ -961,50 +961,50 @@ class Addon(AddonModel):
             # restore state. Return Task for caller if no exception
             out = (
                 await self.start()
-                if last_state in {AddonState.STARTED, AddonState.STARTUP}
+                if last_state in {AppState.STARTED, AppState.STARTUP}
                 else None
             )
         return out
 
     @Job(
         name="addon_rebuild",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def rebuild(self) -> asyncio.Task | None:
-        """Rebuild this addons container and image.
+        """Rebuild this apps container and image.
 
-        Returns a Task that completes when addon has state 'started' (see start)
+        Returns a Task that completes when app has state 'started' (see start)
         if it was running. Else nothing is returned.
         """
-        last_state: AddonState = self.state
+        last_state: AppState = self.state
         try:
-            # remove docker container and image but not addon config
+            # remove docker container and image but not app config
             try:
                 await self.instance.remove()
             except DockerError as err:
                 _LOGGER.error("Could not remove image for app %s: %s", self.slug, err)
-                raise AddonUnknownError(addon=self.slug) from err
+                raise AppUnknownError(app=self.slug) from err
 
             try:
                 await self.instance.install(self.version)
             except DockerBuildError as err:
                 _LOGGER.error("Could not build image for app %s: %s", self.slug, err)
-                raise AddonBuildFailedUnknownError(addon=self.slug) from err
+                raise AppBuildFailedUnknownError(app=self.slug) from err
             except DockerRegistryAuthError:
                 raise
             except DockerError as err:
                 _LOGGER.error(
                     "Could not pull image to update app %s: %s", self.slug, err
                 )
-                raise AddonUnknownError(addon=self.slug) from err
+                raise AppUnknownError(app=self.slug) from err
 
-            if self.addon_store:
-                await self.sys_addons.data.update(self.addon_store)
+            if self.app_store:
+                await self.sys_apps.data.update(self.app_store)
 
             await self._check_ingress_port()
 
-            # Reload ingress tokens in case addon gained ingress support
+            # Reload ingress tokens in case app gained ingress support
             if self.with_ingress:
                 await self.sys_ingress.reload()
 
@@ -1014,7 +1014,7 @@ class Addon(AddonModel):
             # restore state
             out = (
                 await self.start()
-                if last_state in [AddonState.STARTED, AddonState.STARTUP]
+                if last_state in [AppState.STARTED, AppState.STARTUP]
                 else None
             )
         return out
@@ -1042,16 +1042,16 @@ class Addon(AddonModel):
             )
 
     async def install_apparmor(self) -> None:
-        """Install or Update AppArmor profile for Add-on."""
+        """Install or Update AppArmor profile for App."""
         exists_local = self.sys_host.apparmor.exists(self.slug)
-        exists_addon = await self.sys_run_in_executor(self.path_apparmor.exists)
+        exists_app = await self.sys_run_in_executor(self.path_apparmor.exists)
 
         # Nothing to do
-        if not exists_local and not exists_addon:
+        if not exists_local and not exists_app:
             return
 
         # Need removed
-        if exists_local and not exists_addon:
+        if exists_local and not exists_app:
             await self.sys_host.apparmor.remove_profile(self.slug)
             return
 
@@ -1073,7 +1073,7 @@ class Addon(AddonModel):
                 await self.sys_run_in_executor(tmp_folder.cleanup)
 
     async def uninstall_apparmor(self) -> None:
-        """Remove AppArmor profile for Add-on."""
+        """Remove AppArmor profile for App."""
         if not self.sys_host.apparmor.exists(self.slug):
             return
         await self.sys_host.apparmor.remove_profile(self.slug)
@@ -1096,7 +1096,7 @@ class Addon(AddonModel):
         # create voluptuous
         new_schema = vol.Schema(
             vol.All(
-                dict, AddonOptions(self.coresys, new_raw_schema, self.name, self.slug)
+                dict, AppOptions(self.coresys, new_raw_schema, self.name, self.slug)
             )
         )
 
@@ -1126,15 +1126,15 @@ class Addon(AddonModel):
 
     @Job(
         name="addon_start",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def start(self) -> asyncio.Task:
-        """Set options and start add-on.
+        """Set options and start app.
 
-        Returns a Task that completes when addon has state 'started'.
-        For addons with a healthcheck, that is when they become healthy or unhealthy.
-        Addons without a healthcheck have state 'started' immediately.
+        Returns a Task that completes when app has state 'started'.
+        For apps with a healthcheck, that is when they become healthy or unhealthy.
+        Apps without a healthcheck have state 'started' immediately.
         """
         if await self.instance.is_running():
             _LOGGER.warning("%s is already running!", self.slug)
@@ -1155,7 +1155,7 @@ class Addon(AddonModel):
         if self.with_audio:
             await self.write_pulse()
 
-        def _check_addon_config_dir():
+        def _check_app_config_dir():
             if self.path_config.is_dir():
                 return
 
@@ -1164,53 +1164,53 @@ class Addon(AddonModel):
             )
             self.path_config.mkdir()
 
-        if self.addon_config_used:
-            await self.sys_run_in_executor(_check_addon_config_dir)
+        if self.app_config_used:
+            await self.sys_run_in_executor(_check_app_config_dir)
 
-        # Start Add-on
+        # Start App
         self._startup_event.clear()
         try:
             await self.instance.run()
         except DockerContainerPortConflict as err:
-            raise AddonPortConflict(
+            raise AppPortConflict(
                 _LOGGER.error,
                 name=self.slug,
                 port=cast(dict[str, Any], err.extra_fields)["port"],
             ) from err
         except DockerError as err:
             _LOGGER.error("Could not start container for app %s: %s", self.slug, err)
-            self.state = AddonState.ERROR
-            raise AddonUnknownError(addon=self.slug) from err
+            self.state = AppState.ERROR
+            raise AppUnknownError(app=self.slug) from err
 
         self._wait_for_startup_task = self.sys_create_task(self._wait_for_startup())
         return self._wait_for_startup_task
 
     @Job(
         name="addon_stop",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def stop(self) -> None:
-        """Stop add-on."""
+        """Stop app."""
         self._manual_stop = True
         try:
             await self.instance.stop()
         except DockerError as err:
             _LOGGER.error("Could not stop container for app %s: %s", self.slug, err)
-            self.state = AddonState.ERROR
-            raise AddonUnknownError(addon=self.slug) from err
+            self.state = AppState.ERROR
+            raise AppUnknownError(app=self.slug) from err
 
     @Job(
         name="addon_restart",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def restart(self) -> asyncio.Task:
-        """Restart add-on.
+        """Restart app.
 
-        Returns a Task that completes when addon has state 'started' (see start).
+        Returns a Task that completes when app has state 'started' (see start).
         """
-        with suppress(AddonsError):
+        with suppress(AppsError):
             await self.stop()
         return await self.start()
 
@@ -1225,35 +1225,35 @@ class Addon(AddonModel):
         """Return stats of container."""
         try:
             if not await self.is_running():
-                raise AddonNotRunningError(_LOGGER.warning, addon=self.slug)
+                raise AppNotRunningError(_LOGGER.warning, app=self.slug)
 
             return await self.instance.stats()
         except DockerError as err:
             _LOGGER.error(
                 "Could not get stats of container for app %s: %s", self.slug, err
             )
-            raise AddonUnknownError(addon=self.slug) from err
+            raise AppUnknownError(app=self.slug) from err
 
     @Job(
         name="addon_write_stdin",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def write_stdin(self, data) -> None:
-        """Write data to add-on stdin."""
+        """Write data to app stdin."""
         if not self.with_stdin:
-            raise AddonNotSupportedWriteStdinError(_LOGGER.error, addon=self.slug)
+            raise AppNotSupportedWriteStdinError(_LOGGER.error, app=self.slug)
 
         try:
             if not await self.is_running():
-                raise AddonNotRunningError(_LOGGER.warning, addon=self.slug)
+                raise AppNotRunningError(_LOGGER.warning, app=self.slug)
 
             await self.instance.write_stdin(data)
         except DockerError as err:
             _LOGGER.error(
                 "Could not write stdin to container for app %s: %s", self.slug, err
             )
-            raise AddonUnknownError(addon=self.slug) from err
+            raise AppUnknownError(app=self.slug) from err
 
     async def _backup_command(self, command: str) -> None:
         try:
@@ -1263,29 +1263,29 @@ class Addon(AddonModel):
                     "Pre-/Post backup command failed with: %s",
                     command_return.output.decode("utf-8", errors="replace"),
                 )
-                raise AddonPrePostBackupCommandReturnedError(
-                    _LOGGER.error, addon=self.slug, exit_code=command_return.exit_code
+                raise AppPrePostBackupCommandReturnedError(
+                    _LOGGER.error, app=self.slug, exit_code=command_return.exit_code
                 )
         except DockerError as err:
             _LOGGER.error(
                 "Failed running pre-/post backup command %s: %s", command, err
             )
-            raise AddonUnknownError(addon=self.slug) from err
+            raise AppUnknownError(app=self.slug) from err
 
     @Job(
         name="addon_begin_backup",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def begin_backup(self) -> bool:
-        """Execute pre commands or stop addon if necessary.
+        """Execute pre commands or stop app if necessary.
 
         Returns value of `is_running`. Caller should not call `end_backup` if return is false.
         """
         if not await self.is_running():
             return False
 
-        if self.backup_mode == AddonBackupMode.COLD:
+        if self.backup_mode == AppBackupMode.COLD:
             _LOGGER.info("Shutdown app %s for cold backup", self.slug)
             await self.stop()
 
@@ -1296,16 +1296,16 @@ class Addon(AddonModel):
 
     @Job(
         name="addon_end_backup",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def end_backup(self) -> asyncio.Task | None:
-        """Execute post commands or restart addon if necessary.
+        """Execute post commands or restart app if necessary.
 
-        Returns a Task that completes when addon has state 'started' (see start)
+        Returns a Task that completes when app has state 'started' (see start)
         for cold backup. Else nothing is returned.
         """
-        if self.backup_mode is AddonBackupMode.COLD:
+        if self.backup_mode is AppBackupMode.COLD:
             _LOGGER.info("Starting app %s again", self.slug)
             return await self.start()
 
@@ -1316,7 +1316,7 @@ class Addon(AddonModel):
     def _is_excluded_by_filter(
         self, origin_path: Path, arcname: str, item_arcpath: PurePath
     ) -> bool:
-        """Filter out files from backup based on filters provided by addon developer.
+        """Filter out files from backup based on filters provided by app developer.
 
         This tests the dev provided filters against the full path of the file as
         Supervisor sees them using match. This is done for legacy reasons, testing
@@ -1334,20 +1334,20 @@ class Addon(AddonModel):
 
     @Job(
         name="addon_backup",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def backup(self, tar_file: SecureTarFile) -> asyncio.Task | None:
-        """Backup state of an add-on.
+        """Backup state of an app.
 
-        Returns a Task that completes when addon has state 'started' (see start)
+        Returns a Task that completes when app has state 'started' (see start)
         for cold backup. Else nothing is returned.
         """
 
-        def _addon_backup(
+        def _app_backup(
             metadata: dict[str, Any],
             apparmor_profile: str | None,
-            addon_config_used: bool,
+            app_config_used: bool,
             temp_dir: TemporaryDirectory,
             temp_path: Path,
         ):
@@ -1388,7 +1388,7 @@ class Addon(AddonModel):
                 )
 
                 # Backup config (if used and existing, restore handles this gracefully)
-                if addon_config_used and self.path_config.is_dir():
+                if app_config_used and self.path_config.is_dir():
                     atomic_contents_add(
                         backup,
                         self.path_config,
@@ -1423,10 +1423,10 @@ class Addon(AddonModel):
 
             await self.sys_run_in_executor(
                 partial(
-                    _addon_backup,
+                    _app_backup,
                     metadata=data,
                     apparmor_profile=apparmor_profile,
-                    addon_config_used=self.addon_config_used,
+                    app_config_used=self.app_config_used,
                     temp_dir=temp_dir,
                     temp_path=temp_path,
                 )
@@ -1447,14 +1447,14 @@ class Addon(AddonModel):
 
     @Job(
         name="addon_restore",
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         concurrency=JobConcurrency.GROUP_REJECT,
     )
     async def restore(self, tar_file: SecureTarFile) -> asyncio.Task | None:
-        """Restore state of an add-on.
+        """Restore state of an app.
 
-        Returns a Task that completes when addon has state 'started' (see start)
-        if addon is started after restore. Else nothing is returned.
+        Returns a Task that completes when app has state 'started' (see start)
+        if app is started after restore. Else nothing is returned.
         """
         wait_for_start: asyncio.Task | None = None
 
@@ -1488,26 +1488,26 @@ class Addon(AddonModel):
         except tarfile.TarError as err:
             raise BackupRestoreUnknownError() from err
         except ConfigurationFileError as err:
-            raise AddonUnknownError(addon=self.slug) from err
+            raise AppUnknownError(app=self.slug) from err
 
         try:
             # Validate
             try:
                 data = SCHEMA_ADDON_BACKUP(data)
             except vol.Invalid as err:
-                raise AddonBackupMetadataInvalidError(
+                raise AppBackupMetadataInvalidError(
                     _LOGGER.error,
-                    addon=self.slug,
+                    app=self.slug,
                     validation_error=humanize_error(data, err),
                 ) from err
 
             # Validate availability. Raises if not
             self._validate_availability(data[ATTR_SYSTEM], logger=_LOGGER.error)
 
-            # Restore local add-on information
+            # Restore local app information
             _LOGGER.info("Restore config for app %s", self.slug)
             restore_image = self._image(data[ATTR_SYSTEM])
-            await self.sys_addons.data.restore(
+            await self.sys_apps.data.restore(
                 self.slug, data[ATTR_USER], data[ATTR_SYSTEM], restore_image
             )
 
@@ -1555,7 +1555,7 @@ class Addon(AddonModel):
                     temp_config = Path(tmp.name, "config")
                     if temp_config.is_dir():
                         shutil.copytree(temp_config, self.path_config, symlinks=True)
-                    elif self.addon_config_used:
+                    elif self.app_config_used:
                         self.path_config.mkdir()
 
                 try:
@@ -1582,12 +1582,12 @@ class Addon(AddonModel):
                         raise BackupRestoreUnknownError() from err
 
             finally:
-                # Is add-on loaded
+                # Is app loaded
                 if not self.loaded:
                     await self.load()
 
-                # Run add-on
-                if data[ATTR_STATE] == AddonState.STARTED:
+                # Run app
+                if data[ATTR_STATE] == AppState.STARTED:
                     wait_for_start = await self.start()
         finally:
             await self.sys_run_in_executor(tmp.cleanup)
@@ -1598,11 +1598,11 @@ class Addon(AddonModel):
         name="addon_restart_after_problem",
         throttle_period=WATCHDOG_THROTTLE_PERIOD,
         throttle_max_calls=WATCHDOG_THROTTLE_MAX_CALLS,
-        on_condition=AddonsJobError,
+        on_condition=AppsJobError,
         throttle=JobThrottle.GROUP_RATE_LIMIT,
     )
     async def _restart_after_problem(self, state: ContainerState):
-        """Restart unhealthy or failed addon."""
+        """Restart unhealthy or failed app."""
         attempts = 0
         while await self.instance.current_state() == state:
             if not self.in_progress:
@@ -1621,7 +1621,7 @@ class Addon(AddonModel):
                         await (await self.start())
                     else:
                         await (await self.restart())
-                except AddonsError as err:
+                except AppsError as err:
                     attempts = attempts + 1
                     _LOGGER.error("Watchdog restart of app %s failed!", self.name)
                     await async_capture_exception(err)
@@ -1647,27 +1647,27 @@ class Addon(AddonModel):
             await asyncio.sleep(delay)
 
     async def container_state_changed(self, event: DockerContainerStateEvent) -> None:
-        """Set addon state from container state."""
+        """Set app state from container state."""
         if event.name != self.instance.name:
             return
 
         if event.state == ContainerState.RUNNING:
             self._manual_stop = False
             self.state = (
-                AddonState.STARTUP if self.instance.healthcheck else AddonState.STARTED
+                AppState.STARTUP if self.instance.healthcheck else AppState.STARTED
             )
         elif event.state in [
             ContainerState.HEALTHY,
             ContainerState.UNHEALTHY,
         ]:
-            self.state = AddonState.STARTED
+            self.state = AppState.STARTED
         elif event.state == ContainerState.STOPPED:
-            self.state = AddonState.STOPPED
+            self.state = AppState.STOPPED
         elif event.state == ContainerState.FAILED:
-            self.state = AddonState.ERROR
+            self.state = AppState.ERROR
 
     async def watchdog_container(self, event: DockerContainerStateEvent) -> None:
-        """Process state changes in addon container and restart if necessary."""
+        """Process state changes in app container and restart if necessary."""
         if event.name != self.instance.name:
             return
 
@@ -1684,6 +1684,6 @@ class Addon(AddonModel):
 
     def refresh_path_cache(self) -> Awaitable[None]:
         """Refresh cache of existing paths."""
-        if self.is_detached or not self.addon_store:
+        if self.is_detached or not self.app_store:
             return super().refresh_path_cache()
-        return self.addon_store.refresh_path_cache()
+        return self.app_store.refresh_path_cache()

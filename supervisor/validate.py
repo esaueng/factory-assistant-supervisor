@@ -7,7 +7,7 @@ from awesomeversion import AwesomeVersion
 import voluptuous as vol
 
 from .const import (
-    ATTR_ADDONS_CUSTOM_LIST,
+    ATTR_APPS_CUSTOM_LIST,
     ATTR_AUDIO,
     ATTR_AUTO_UPDATE,
     ATTR_CHANNEL,
@@ -87,7 +87,7 @@ def docker_image(image: str) -> str:
     if not path:
         raise vol.Invalid(f"Docker image has no name: {image}")
 
-    # Tags are not allowed - version is managed separately by the add-on system
+    # Tags are not allowed - version is managed separately by the app system
     if ":" in path:
         raise vol.Invalid(f"Docker image must not contain a tag: {image}")
 
@@ -204,7 +204,7 @@ SCHEMA_SUPERVISOR_CONFIG = vol.Schema(
             ATTR_VERSION, default=AwesomeVersion(SUPERVISOR_VERSION)
         ): version_tag,
         vol.Optional(ATTR_IMAGE): docker_image,
-        vol.Optional(ATTR_ADDONS_CUSTOM_LIST, default=[]): repositories,
+        vol.Optional(ATTR_APPS_CUSTOM_LIST, default=[]): repositories,
         vol.Optional(ATTR_WAIT_BOOT, default=5): wait_boot,
         vol.Optional(ATTR_LOGGING, default=LogLevel.INFO): vol.Coerce(LogLevel),
         vol.Optional(ATTR_DEBUG, default=False): vol.Boolean(),

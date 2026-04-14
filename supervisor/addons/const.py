@@ -1,4 +1,4 @@
-"""Add-on static data."""
+"""App static data."""
 
 from datetime import timedelta
 from enum import StrEnum
@@ -6,15 +6,15 @@ from enum import StrEnum
 from ..jobs.const import JobCondition
 
 
-class AddonBackupMode(StrEnum):
-    """Backup mode of an Add-on."""
+class AppBackupMode(StrEnum):
+    """Backup mode of an App."""
 
     HOT = "hot"
     COLD = "cold"
 
 
 class MappingType(StrEnum):
-    """Mapping type of an Add-on Folder."""
+    """Mapping type of an App Folder."""
 
     DATA = "data"
     CONFIG = "config"
@@ -38,7 +38,7 @@ WATCHDOG_MAX_ATTEMPTS = 5
 WATCHDOG_THROTTLE_PERIOD = timedelta(minutes=30)
 WATCHDOG_THROTTLE_MAX_CALLS = 10
 
-ADDON_UPDATE_CONDITIONS = [
+APP_UPDATE_CONDITIONS = [
     JobCondition.FREE_SPACE,
     JobCondition.HEALTHY,
     JobCondition.INTERNET_HOST,
