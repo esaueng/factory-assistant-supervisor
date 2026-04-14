@@ -1,6 +1,6 @@
 {
   "name": "Supervisor dev",
-  "image": "ghcr.io/home-assistant/devcontainer:4-supervisor",
+  "image": "ghcr.io/home-assistant/devcontainer:5-supervisor",
   "overrideCommand": false,
   "remoteUser": "vscode",
   "containerEnv": {
@@ -19,10 +19,10 @@
         "charliermarsh.ruff",
         "ms-python.pylint",
         "ms-python.vscode-pylance",
-        "visualstudioexptteam.vscodeintellicode",
         "redhat.vscode-yaml",
         "esbenp.prettier-vscode",
-        "GitHub.vscode-pull-request-github"
+        "GitHub.vscode-pull-request-github",
+        "GitHub.copilot"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/home/vscode/.local/ha-venv/bin/python",
