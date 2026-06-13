@@ -284,7 +284,7 @@ class HomeAssistant(FileConfiguration, CoreSysAttributes):
         """Return true if a Home Assistant update is available."""
         try:
             return self.version is not None and self.version < self.latest_version
-        except AwesomeVersionException, TypeError:
+        except (AwesomeVersionException, TypeError):
             return False
 
     @property
