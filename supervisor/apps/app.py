@@ -316,7 +316,7 @@ class App(AppModel):
                     await self.instance.install(
                         self.version, default_image, arch=self.arch
                     )
-                except DockerError, AppNotSupportedError:
+                except (DockerError, AppNotSupportedError):
                     self._create_missing_image_issue()
         except DockerError as err:
             # Docker error other than a clean "image not found" - we can't
@@ -820,7 +820,7 @@ class App(AppModel):
             ) as req:
                 if req.status < 300:
                     return True
-        except TimeoutError, aiohttp.ClientError:
+        except (TimeoutError, aiohttp.ClientError):
             pass
 
         return False
