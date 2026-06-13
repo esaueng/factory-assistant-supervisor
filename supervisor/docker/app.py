@@ -112,7 +112,7 @@ class DockerApp(DockerInterface):
             return IPv4Address(
                 self._meta["NetworkSettings"]["Networks"]["hassio"]["IPAddress"]
             )
-        except KeyError, TypeError, ValueError:
+        except (KeyError, TypeError, ValueError):
             return NO_ADDDRESS
 
     @property

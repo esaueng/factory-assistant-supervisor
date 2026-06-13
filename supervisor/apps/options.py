@@ -94,7 +94,7 @@ class AppOptions(CoreSysAttributes):
             typ = self.raw_schema[key]
             try:
                 options[key] = self._validate_element(typ, value, key)
-            except IndexError, KeyError:
+            except (IndexError, KeyError):
                 raise vol.Invalid(
                     f"Type error for option '{key}' in {self._name} ({self._slug})"
                 ) from None

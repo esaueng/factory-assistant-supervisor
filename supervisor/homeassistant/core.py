@@ -170,7 +170,7 @@ class HomeAssistantCore(JobGroup):
                     LANDINGPAGE, image=self.sys_updater.image_homeassistant
                 )
                 break
-            except DockerError, JobException:
+            except (DockerError, JobException):
                 pass
             except Exception as err:  # pylint: disable=broad-except
                 await async_capture_exception(err)
@@ -270,7 +270,7 @@ class HomeAssistantCore(JobGroup):
                     )
                     self.sys_homeassistant.version = self.instance.version or to_version
                     break
-                except DockerError, JobException:
+                except (DockerError, JobException):
                     pass
                 except Exception as err:  # pylint: disable=broad-except
                     await async_capture_exception(err)

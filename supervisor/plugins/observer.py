@@ -115,7 +115,7 @@ class PluginObserver(PluginBase):
             ) as request:
                 if request.status == 200:
                     return True
-        except aiohttp.ClientError, TimeoutError:
+        except (aiohttp.ClientError, TimeoutError):
             pass
 
         return False
