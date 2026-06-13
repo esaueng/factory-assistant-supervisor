@@ -395,4 +395,4 @@ async def test_load_with_incorrect_image(
 async def test_default_image_fallback(coresys: CoreSys, plugin: PluginBase):
     """Test default image falls back to hard-coded constant if we fail to fetch version file."""
     assert getattr(coresys.updater, f"image_{plugin.slug}") is None
-    assert plugin.default_image == f"ghcr.io/home-assistant/amd64-hassio-{plugin.slug}"
+    assert plugin.default_image == f"ghcr.io/esaueng/amd64-hassio-{plugin.slug}"

@@ -121,7 +121,7 @@ class Supervisor(CoreSysAttributes):
     @property
     def default_image(self) -> str:
         """Return the default image for this system."""
-        return f"ghcr.io/home-assistant/{self.sys_arch.supervisor}-hassio-supervisor"
+        return f"ghcr.io/esaueng/{self.sys_arch.supervisor}-hassio-supervisor"
 
     @property
     def image(self) -> str | None:
