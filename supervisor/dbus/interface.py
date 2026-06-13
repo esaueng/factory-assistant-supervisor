@@ -19,7 +19,7 @@ def dbus_property(func):
     def wrapper(*args, **kwds):
         try:
             return func(*args, **kwds)
-        except KeyError, AttributeError:
+        except (KeyError, AttributeError):
             return None
 
     return wrapper
