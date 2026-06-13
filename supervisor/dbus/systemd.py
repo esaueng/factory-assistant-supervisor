@@ -158,7 +158,7 @@ class Systemd(DBusInterfaceProxy):
             await super().connect(bus)
         except DBusError:
             _LOGGER.warning("Can't connect to systemd")
-        except DBusServiceUnkownError, DBusInterfaceError:
+        except (DBusServiceUnkownError, DBusInterfaceError):
             _LOGGER.warning(
                 "No systemd support on the host. Host control has been disabled."
             )

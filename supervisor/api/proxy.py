@@ -59,7 +59,7 @@ class APIProxy(CoreSysAttributes):
             await response.prepare(request)
             async for data in client.content:
                 await response.write(data)
-        except aiohttp.ClientError, aiohttp.ClientPayloadError:
+        except (aiohttp.ClientError, aiohttp.ClientPayloadError):
             # Client disconnected or upstream closed
             pass
 
