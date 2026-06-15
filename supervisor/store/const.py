@@ -22,6 +22,7 @@ class BuiltinRepository(StrEnum):
 
     # Git-based built-in repositories
     CORE = REPOSITORY_CORE
+    FACTORY_ASSISTANT_ADDONS = "https://github.com/esaueng/factory-assistant-addons"
     COMMUNITY_ADDONS = "https://github.com/hassio-addons/repository"
     ESPHOME = "https://github.com/esphome/home-assistant-addon"
     MUSIC_ASSISTANT = "https://github.com/music-assistant/home-assistant-addon"
