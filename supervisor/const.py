@@ -22,7 +22,9 @@ OBSERVER_DOCKER_NAME: str = f"{DOCKER_PREFIX}_observer"
 SUPERVISOR_DOCKER_NAME: str = f"{DOCKER_PREFIX}_supervisor"
 
 URL_HASSIO_ADDONS = "https://github.com/home-assistant/addons"
-URL_HASSIO_APPARMOR = "https://esaueng.github.io/FactoryAssistantOS/apparmor_{channel}.txt"
+URL_HASSIO_APPARMOR = (
+    "https://esaueng.github.io/FactoryAssistantOS/apparmor_{channel}.txt"
+)
 URL_HASSIO_VERSION = "https://esaueng.github.io/FactoryAssistantOS/{channel}.json"
 
 SUPERVISOR_DATA = Path("/data")
