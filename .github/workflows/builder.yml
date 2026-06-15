@@ -367,8 +367,12 @@ jobs:
 
       # Wait for Core to come up so subsequent steps (backup, addon install) succeed.
       # On first startup the Supervisor installs the landingpage, then pulls and starts
-      # real Core. We poll the Core info endpoint until it reports a real version
-      # (not null and not the "landingpage" placeholder), which proves Core installed.
+      # real Core via the "home_assistant_core_install" job. That job only completes
+      # once Core's API reports core_state == RUNNING (HomeAssistant._block_till_run),
+      # i.e. Core's HTTP/WebSocket API is reachable -- which the full backup needs to
+      # "inform" Core. So gate on BOTH a real Core version (not null/landingpage) AND
+      # the install job no longer being active; a version alone appears as soon as the
+      # image is attached, well before Core has finished booting.
       - name: Wait for Core to be started
         run: |
           echo "Waiting for Home Assistant Core to be installed and started..."
@@ -378,13 +382,18 @@ jobs:
           while [ $elapsed -lt $timeout ]; do
             version=$(curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
               "http://${SUPERVISOR}/core/info" 2>/dev/null | jq -r '.data.version // "null"' 2>/dev/null || echo "null")
-            if [ "$version" != "null" ] && [ "$version" != "landingpage" ]; then
+            installing=$(curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+              "http://${SUPERVISOR}/jobs/info" 2>/dev/null \
+              | jq -r '[.. | objects | select(.name? == "home_assistant_core_install" and .done? == false)] | length' 2>/dev/null || echo "1")
+            case "$installing" in ''|*[!0-9]*) installing=1;; esac
+
+            if [ "$version" != "null" ] && [ "$version" != "landingpage" ] && [ "$installing" -eq 0 ]; then
               echo "Home Assistant Core install/start complete (version ${version}, took ${elapsed}s)"
               exit 0
             fi
 
             if [ $((elapsed % 15)) -eq 0 ]; then
-              echo "Core still installing... (version=${version}, ${elapsed}s/${timeout}s)"
+              echo "Core still installing/starting... (version=${version}, active_install_jobs=${installing}, ${elapsed}s/${timeout}s)"
             fi
 
             sleep 5
@@ -392,7 +401,7 @@ jobs:
           done
 
           echo "ERROR: Home Assistant Core failed to install/start within ${timeout}s"
-          docker logs --tail 50 hassio_supervisor
+          docker logs --tail 80 hassio_supervisor
           exit 1
 
       - name: Check the Supervisor
