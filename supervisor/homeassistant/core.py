@@ -125,7 +125,11 @@ class HomeAssistantCore(JobGroup):
             await self.sys_homeassistant.save_data()
 
         # Start landingpage
-        if self.instance.version != LANDINGPAGE:
+        # instance.version is None when the image carries no io.hass.version label;
+        # comparing None against the LANDINGPAGE AwesomeVersion raises
+        # AwesomeVersionCompareException, so guard it. An unknown version is not the
+        # landingpage, so there is nothing to start.
+        if self.instance.version is None or self.instance.version != LANDINGPAGE:
             return
 
         _LOGGER.info("Starting HomeAssistant landingpage")
