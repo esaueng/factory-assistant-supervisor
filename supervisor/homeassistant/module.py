@@ -185,9 +185,9 @@ class HomeAssistant(FileConfiguration, CoreSysAttributes):
     @property
     def default_image(self) -> str:
         """Return the default image for this system."""
-        machine = FACTORY_ASSISTANT_CORE_IMAGE_MACHINE.get(
-            self.sys_machine, self.sys_machine
-        )
+        machine = self.sys_machine
+        if machine is not None:
+            machine = FACTORY_ASSISTANT_CORE_IMAGE_MACHINE.get(machine, machine)
         return f"ghcr.io/esaueng/{machine}-homeassistant"
 
     @property
