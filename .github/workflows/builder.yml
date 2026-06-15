@@ -38,6 +38,7 @@ env:
   BUILD_NAME: supervisor
   BUILD_TYPE: supervisor
   IMAGE_NAME: hassio-supervisor
+  RUNNER_IMAGE: ghcr.io/${{ github.repository_owner }}/amd64-hassio-supervisor
   ARCHITECTURES: '["amd64", "aarch64"]'
 
 concurrency:
@@ -265,7 +266,7 @@ jobs:
         with:
           arch: amd64
           container-registry-password: ${{ secrets.GITHUB_TOKEN }}
-          image: ghcr.io/home-assistant/amd64-hassio-supervisor
+          image: ${{ env.RUNNER_IMAGE }}
           image-tags: runner
           load: true
           version: ${{ needs.init.outputs.version }}
@@ -274,8 +275,8 @@ jobs:
       - name: Pull Supervisor
         if: needs.init.outputs.publish == 'true'
         run: |
-          docker pull ghcr.io/home-assistant/amd64-hassio-supervisor:${{ needs.init.outputs.version }}
-          docker tag ghcr.io/home-assistant/amd64-hassio-supervisor:${{ needs.init.outputs.version }} ghcr.io/home-assistant/amd64-hassio-supervisor:runner
+          docker pull "${RUNNER_IMAGE}:${{ needs.init.outputs.version }}"
+          docker tag "${RUNNER_IMAGE}:${{ needs.init.outputs.version }}" "${RUNNER_IMAGE}:runner"
 
       - name: Create the Supervisor
         run: |
@@ -293,7 +294,7 @@ jobs:
             -e SUPERVISOR_NAME=hassio_supervisor \
             -e SUPERVISOR_DEV=1 \
             -e SUPERVISOR_MACHINE="qemux86-64" \
-          ghcr.io/home-assistant/amd64-hassio-supervisor:runner
+          "${RUNNER_IMAGE}:runner"
 
       - name: Start the Supervisor
         run: docker start hassio_supervisor
