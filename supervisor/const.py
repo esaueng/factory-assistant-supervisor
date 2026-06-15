@@ -29,6 +29,11 @@ URL_HASSIO_VERSION = "https://esaueng.github.io/FactoryAssistantOS/{channel}.jso
 
 SUPERVISOR_DATA = Path("/data")
 
+# Read-only tree of Factory Assistant default configuration provided by the OS
+# image; seeded into the Home Assistant config on first boot (see
+# bootstrap.seed_factory_defaults). Absent on non-appliance/dev environments.
+FACTORY_DEFAULTS_SOURCE = Path("/usr/share/factory-assistant")
+
 FILE_HASSIO_ADDONS = Path(SUPERVISOR_DATA, "addons.json")
 FILE_HASSIO_APPS = Path(SUPERVISOR_DATA, "apps.json")
 FILE_HASSIO_AUTH = Path(SUPERVISOR_DATA, "auth.json")
