@@ -5,6 +5,8 @@ import asyncio
 from collections.abc import Callable
 import logging
 import os
+from pathlib import Path
+import shutil
 import signal
 import threading
 import warnings
@@ -22,6 +24,7 @@ from .const import (
     ENV_SUPERVISOR_MACHINE,
     ENV_SUPERVISOR_NAME,
     ENV_SUPERVISOR_SHARE,
+    FACTORY_DEFAULTS_SOURCE,
     SOCKET_DOCKER,
     LogLevel,
     UpdateChannel,
@@ -156,6 +159,44 @@ def _migrate_legacy_paths(coresys: CoreSys) -> None:
         )
 
 
+def seed_factory_defaults(
+    target: Path, source: Path = FACTORY_DEFAULTS_SOURCE
+) -> int:
+    """Seed the Factory Assistant default configuration into the HA config dir.
+
+    Idempotent and non-destructive: only seeds when the target has no
+    ``configuration.yaml`` (a fresh, unconfigured install), and never overwrites
+    an existing file. Returns the number of files copied. No-op (returns 0) when
+    the read-only defaults source is not present, e.g. in development or a
+    non-appliance environment. Operates on the in-container config path only, so
+    it does not depend on the host-side Supervisor data volume layout.
+    """
+    if not source.is_dir():
+        _LOGGER.debug("No Factory Assistant defaults at '%s', skipping seed", source)
+        return 0
+
+    if (target / "configuration.yaml").exists():
+        # Already configured (previously seeded or user-provided); leave as-is.
+        return 0
+
+    _LOGGER.info("Seeding Factory Assistant default configuration into '%s'", target)
+    seeded = 0
+    for src in sorted(source.rglob("*")):
+        dest = target / src.relative_to(source)
+        if src.is_dir():
+            dest.mkdir(parents=True, exist_ok=True)
+            continue
+        if dest.exists():
+            # Never overwrite an existing user file.
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        seeded += 1
+
+    _LOGGER.info("Seeded %d Factory Assistant default configuration file(s)", seeded)
+    return seeded
+
+
 def initialize_system(coresys: CoreSys) -> None:
     """Set up the default configuration and create folders."""
     config = coresys.config
@@ -167,6 +208,9 @@ def initialize_system(coresys: CoreSys) -> None:
             config.path_homeassistant,
         )
         config.path_homeassistant.mkdir()
+
+    # Seed Factory Assistant default configuration on first boot
+    seed_factory_defaults(config.path_homeassistant)
 
     # Supervisor ssl folder
     if not config.path_ssl.is_dir():
