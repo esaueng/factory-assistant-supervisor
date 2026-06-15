@@ -40,7 +40,7 @@ async def test_default_load(coresys: CoreSys):
     ):
         await store_manager.load()
 
-    assert len(store_manager.all) == 5
+    assert len(store_manager.all) == 6
     assert isinstance(store_manager.get("core"), Repository)
     assert isinstance(store_manager.get("local"), Repository)
 
@@ -246,7 +246,7 @@ async def test_install_unavailable_app(
 async def test_reload(coresys: CoreSys, supervisor_internet):
     """Test store reload."""
     await coresys.store.load()
-    assert len(coresys.store.all) == 5
+    assert len(coresys.store.all) == 6
 
     with patch.object(GitRepo, "pull") as git_pull:
         await coresys.store.reload()
