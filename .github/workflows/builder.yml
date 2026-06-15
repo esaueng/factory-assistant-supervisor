@@ -307,6 +307,8 @@ jobs:
             echo "Waiting for network configuration..."
             sleep 1
           done
+          # Export for later steps; the IP can change after a Supervisor restart.
+          echo "SUPERVISOR=${SUPERVISOR}" >> "$GITHUB_ENV"
           echo "Waiting for Supervisor API at http://${SUPERVISOR}/supervisor/ping"
           timeout=300
           elapsed=0
@@ -333,25 +335,65 @@ jobs:
           docker logs --tail 50 hassio_supervisor
           exit 1
 
+      # The smoke test talks to the Supervisor REST API directly instead of
+      # `docker exec hassio_cli ha ...`, so it does NOT depend on the CLI plugin
+      # container (hassio_cli) being up. The CLI plugin writes its access token to
+      # /data/cli.json (bind-mounted at /tmp/supervisor/data) before it starts, so a
+      # valid token is available even if the container itself fails to start, and the
+      # token is regenerated on Supervisor restart. This step reads the token and
+      # verifies it against an authenticated endpoint, retrying until it is accepted,
+      # so it is safe to reuse after the restart picks up a fresh token.
+      - &read_supervisor_token
+        name: Read Supervisor API token
+        run: |
+          token=""
+          for _ in $(seq 1 90); do
+            if sudo test -s /tmp/supervisor/data/cli.json; then
+              token=$(sudo cat /tmp/supervisor/data/cli.json | jq -r '.data.access_token // .access_token // empty')
+              if [ -n "$token" ] && \
+                 curl -sSf -H "Authorization: Bearer ${token}" "http://${SUPERVISOR}/supervisor/info" >/dev/null 2>&1; then
+                echo "::add-mask::${token}"
+                echo "SUPERVISOR_TOKEN=${token}" >> "$GITHUB_ENV"
+                echo "Supervisor API token acquired and verified"
+                exit 0
+              fi
+            fi
+            sleep 2
+          done
+          echo "ERROR: could not read/verify a Supervisor API token from /tmp/supervisor/data/cli.json"
+          sudo ls -la /tmp/supervisor/data/ || true
+          docker logs --tail 50 hassio_supervisor
+          exit 1
+
       # Wait for Core to come up so subsequent steps (backup, addon install) succeed.
-      # On first startup, Supervisor installs Core via the "home_assistant_core_install"
-      # job (which pulls the image and then starts Core). Jobs with cleanup=True are
-      # removed from the jobs list once done, so we poll until it's gone.
+      # On first startup the Supervisor installs the landingpage, then pulls and starts
+      # real Core via the "home_assistant_core_install" job. That job only completes
+      # once Core's API reports core_state == RUNNING (HomeAssistant._block_till_run),
+      # i.e. Core's HTTP/WebSocket API is reachable -- which the full backup needs to
+      # "inform" Core. So gate on BOTH a real Core version (not null/landingpage) AND
+      # the install job no longer being active; a version alone appears as soon as the
+      # image is attached, well before Core has finished booting.
       - name: Wait for Core to be started
         run: |
           echo "Waiting for Home Assistant Core to be installed and started..."
-          timeout=300
+          timeout=600
           elapsed=0
 
           while [ $elapsed -lt $timeout ]; do
-            jobs=$(docker exec hassio_cli ha jobs info --no-progress --raw-json | jq -r '.data.jobs[] | select(.name == "home_assistant_core_install" and .done == false) | .name' 2>/dev/null)
-            if [ -z "$jobs" ]; then
-              echo "Home Assistant Core install/start complete (took ${elapsed}s)"
+            version=$(curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+              "http://${SUPERVISOR}/core/info" 2>/dev/null | jq -r '.data.version // "null"' 2>/dev/null || echo "null")
+            installing=$(curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+              "http://${SUPERVISOR}/jobs/info" 2>/dev/null \
+              | jq -r '[.. | objects | select(.name? == "home_assistant_core_install" and .done? == false)] | length' 2>/dev/null || echo "1")
+            case "$installing" in ''|*[!0-9]*) installing=1;; esac
+
+            if [ "$version" != "null" ] && [ "$version" != "landingpage" ] && [ "$installing" -eq 0 ]; then
+              echo "Home Assistant Core install/start complete (version ${version}, took ${elapsed}s)"
               exit 0
             fi
 
             if [ $((elapsed % 15)) -eq 0 ]; then
-              echo "Core still installing... (${elapsed}s/${timeout}s)"
+              echo "Core still installing/starting... (version=${version}, active_install_jobs=${installing}, ${elapsed}s/${timeout}s)"
             fi
 
             sleep 5
@@ -359,99 +401,88 @@ jobs:
           done
 
           echo "ERROR: Home Assistant Core failed to install/start within ${timeout}s"
-          docker logs --tail 50 hassio_supervisor
+          docker logs --tail 80 hassio_supervisor
           exit 1
 
       - name: Check the Supervisor
         run: |
           echo "Checking supervisor info"
-          test=$(docker exec hassio_cli ha supervisor info --no-progress --raw-json | jq -r '.result')
-          if [ "$test" != "ok" ]; then
-            exit 1
-          fi
+          curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://${SUPERVISOR}/supervisor/info" | jq -e '.result == "ok"'
 
           echo "Checking supervisor network info"
-          test=$(docker exec hassio_cli ha network info --no-progress --raw-json | jq -r '.result')
-          if [ "$test" != "ok" ]; then
-            exit 1
-          fi
+          curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://${SUPERVISOR}/network/info" | jq -e '.result == "ok"'
 
       - name: Check the Store / App
         run: |
           echo "Install Core SSH app"
-          test=$(docker exec hassio_cli ha apps install core_ssh --no-progress --raw-json | jq -r '.result')
-          if [ "$test" != "ok" ]; then
-            exit 1
-          fi
+          curl -sSf -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            -H "Content-Type: application/json" -d '{}' \
+            "http://${SUPERVISOR}/store/addons/core_ssh/install" | jq -e '.result == "ok"'
 
-          # Make sure it actually installed
-          test=$(docker exec hassio_cli ha apps info core_ssh --no-progress --raw-json | jq -r '.data.version')
-          if [[ "$test" == "null" ]]; then
-            exit 1
-          fi
+          echo "Make sure it actually installed"
+          curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://${SUPERVISOR}/addons/core_ssh/info" | jq -e '.data.version != null'
 
           echo "Start Core SSH app"
-          test=$(docker exec hassio_cli ha apps start core_ssh --no-progress --raw-json | jq -r '.result')
-          if [ "$test" != "ok" ]; then
-            exit 1
-          fi
+          curl -sSf -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://${SUPERVISOR}/addons/core_ssh/start" | jq -e '.result == "ok"'
 
-          # Make sure its state is started
-          test="$(docker exec hassio_cli ha apps info core_ssh --no-progress --raw-json | jq -r '.data.state')"
-          if [ "$test" != "started" ]; then
-            exit 1
-          fi
+          echo "Make sure its state is started"
+          curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://${SUPERVISOR}/addons/core_ssh/info" | jq -e '.data.state == "started"'
 
       - name: Create full backup
         id: backup
         run: |
-          test=$(docker exec hassio_cli ha backups new --no-progress --raw-json)
-          if [ "$(echo $test | jq -r '.result')" != "ok" ]; then
-            exit 1
-          fi
-          echo "slug=$(echo $test | jq -r '.data.slug')" >> "$GITHUB_OUTPUT"
+          response=$(curl -sSf -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            -H "Content-Type: application/json" -d '{}' \
+            "http://${SUPERVISOR}/backups/new/full")
+          echo "$response" | jq -e '.result == "ok"'
+          slug=$(echo "$response" | jq -r '.data.slug')
+          [ -n "$slug" ] && [ "$slug" != "null" ]
+          echo "slug=${slug}" >> "$GITHUB_OUTPUT"
+          echo "Created backup ${slug}"
 
       - name: Uninstall SSH app
         run: |
-          test=$(docker exec hassio_cli ha apps uninstall core_ssh --no-progress --raw-json | jq -r '.result')
-          if [ "$test" != "ok" ]; then
-            exit 1
-          fi
+          curl -sSf -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://${SUPERVISOR}/addons/core_ssh/uninstall" | jq -e '.result == "ok"'
 
       - name: Restart supervisor
         run: |
-          test=$(docker exec hassio_cli ha supervisor restart --no-progress --raw-json | jq -r '.result')
-          if [ "$test" != "ok" ]; then
-            exit 1
-          fi
+          # The restart tears down and recreates the Supervisor container, so the API
+          # connection may drop before a full response is read; treat that as the
+          # restart being accepted and verify recovery via the wait-for-ping step.
+          out=$(curl -sS -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://${SUPERVISOR}/supervisor/restart" 2>&1) || true
+          echo "restart response: ${out}"
 
       - *wait_for_supervisor
 
+      # The CLI token is regenerated when the CLI plugin restarts, so re-read it.
+      - *read_supervisor_token
+
       - name: Restore SSH app from backup
         run: |
-          test=$(docker exec hassio_cli ha backups restore ${{ steps.backup.outputs.slug }} --app core_ssh --no-progress --raw-json | jq -r '.result')
-          if [ "$test" != "ok" ]; then
-            exit 1
-          fi
+          curl -sSf -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            -H "Content-Type: application/json" -d '{"addons": ["core_ssh"]}' \
+            "http://${SUPERVISOR}/backups/${{ steps.backup.outputs.slug }}/restore/partial" | jq -e '.result == "ok"'
 
-          # Make sure it actually installed
-          test=$(docker exec hassio_cli ha apps info core_ssh --no-progress --raw-json | jq -r '.data.version')
-          if [[ "$test" == "null" ]]; then
-            exit 1
-          fi
+          echo "Make sure it actually installed"
+          curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://${SUPERVISOR}/addons/core_ssh/info" | jq -e '.data.version != null'
 
-          # Make sure its state is started
-          test="$(docker exec hassio_cli ha apps info core_ssh --no-progress --raw-json | jq -r '.data.state')"
-          if [ "$test" != "started" ]; then
-            exit 1
-          fi
+          echo "Make sure its state is started"
+          curl -sSf -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            "http://${SUPERVISOR}/addons/core_ssh/info" | jq -e '.data.state == "started"'
 
       - name: Restore SSL directory from backup
         run: |
-          test=$(docker exec hassio_cli ha backups restore ${{ steps.backup.outputs.slug }} --folders ssl --no-progress --raw-json | jq -r '.result')
-          if [ "$test" != "ok" ]; then
-            exit 1
-          fi
+          curl -sSf -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            -H "Content-Type: application/json" -d '{"folders": ["ssl"]}' \
+            "http://${SUPERVISOR}/backups/${{ steps.backup.outputs.slug }}/restore/partial" | jq -e '.result == "ok"'
 
       - name: Get supervisor logs on failiure
         if: ${{ cancelled() || failure() }}
