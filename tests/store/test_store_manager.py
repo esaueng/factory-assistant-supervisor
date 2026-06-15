@@ -251,7 +251,7 @@ async def test_reload(coresys: CoreSys, supervisor_internet):
     with patch.object(GitRepo, "pull") as git_pull:
         await coresys.store.reload()
 
-        assert git_pull.call_count == 4
+        assert git_pull.call_count == 5
 
 
 async def test_app_version_timestamp(coresys: CoreSys, install_app_example: App):
