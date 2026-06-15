@@ -7,7 +7,7 @@ from pathlib import Path, PurePath
 import shutil
 import tarfile
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from awesomeversion import AwesomeVersion, AwesomeVersionException
@@ -57,6 +57,10 @@ from .validate import SCHEMA_HASS_CONFIG
 from .websocket import HomeAssistantWebSocket
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+FACTORY_ASSISTANT_CORE_IMAGE_MACHINE: Final[dict[str, str]] = {
+    "qemux86-64": "generic-x86-64",
+}
 
 
 HOMEASSISTANT_BACKUP_EXCLUDE = [
@@ -181,7 +185,10 @@ class HomeAssistant(FileConfiguration, CoreSysAttributes):
     @property
     def default_image(self) -> str:
         """Return the default image for this system."""
-        return f"ghcr.io/esaueng/{self.sys_machine}-homeassistant"
+        machine = FACTORY_ASSISTANT_CORE_IMAGE_MACHINE.get(
+            self.sys_machine, self.sys_machine
+        )
+        return f"ghcr.io/esaueng/{machine}-homeassistant"
 
     @property
     def image(self) -> str:
@@ -284,7 +291,7 @@ class HomeAssistant(FileConfiguration, CoreSysAttributes):
         """Return true if a Home Assistant update is available."""
         try:
             return self.version is not None and self.version < self.latest_version
-        except (AwesomeVersionException, TypeError):
+        except AwesomeVersionException, TypeError:
             return False
 
     @property
