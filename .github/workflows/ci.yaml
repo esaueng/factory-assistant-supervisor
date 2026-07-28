@@ -20,7 +20,7 @@ jobs:
   # Separate job to pre-populate the base dependency cache
   # This prevent upcoming jobs to do the same individually
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     outputs:
       python-version: ${{ steps.python.outputs.python-version }}
     name: Prepare Python dependencies
@@ -64,7 +64,7 @@ jobs:
 
   lint-ruff-format:
     name: Check ruff-format
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     needs: prepare
     steps:
       - name: Check out code from GitHub
@@ -107,7 +107,7 @@ jobs:
 
   lint-ruff:
     name: Check ruff
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     needs: prepare
     steps:
       - name: Check out code from GitHub
@@ -150,7 +150,7 @@ jobs:
 
   lint-dockerfile:
     name: Check Dockerfile
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     needs: prepare
     steps:
       - name: Check out code from GitHub
@@ -165,7 +165,7 @@ jobs:
 
   lint-executable-shebangs:
     name: Check executables
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     needs: prepare
     steps:
       - name: Check out code from GitHub
@@ -209,7 +209,7 @@ jobs:
 
   lint-json:
     name: Check JSON
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     needs: prepare
     steps:
       - name: Check out code from GitHub
@@ -253,7 +253,7 @@ jobs:
 
   lint-pylint:
     name: Check pylint
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     needs: prepare
     steps:
       - name: Check out code from GitHub
@@ -289,7 +289,7 @@ jobs:
 
   mypy:
     name: Check mypy
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     needs: prepare
     steps:
       - name: Check out code from GitHub
@@ -334,7 +334,7 @@ jobs:
           mypy supervisor
 
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     needs: prepare
     name: Run tests Python ${{ needs.prepare.outputs.python-version }}
     steps:
@@ -395,7 +395,7 @@ jobs:
 
   coverage:
     name: Process test coverage
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     needs: ["pytest", "prepare"]
     steps:
       - name: Check out code from GitHub
