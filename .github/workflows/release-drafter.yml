@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   update_release_draft:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     name: Release Drafter
     steps:
       - name: Checkout the repository
