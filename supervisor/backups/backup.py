@@ -378,7 +378,7 @@ class Backup(JobGroup):
                 test_tar_file = backup.extractfile(test_tar_name)
                 try:
                     with SecureTarFile(
-                        REDACTED_SECRET,
+                        gzip=self.compressed,
                         fileobj=test_tar_file,
                         password=self._password,
                     ):
@@ -633,7 +633,7 @@ class Backup(JobGroup):
 
         app_file = self._outer_secure_tarfile.create_tar(
             f"./{tar_name}",
-            REDACTED_SECRET,
+            gzip=self.compressed,
         )
         # Take backup
         try:
@@ -691,7 +691,7 @@ class Backup(JobGroup):
 
         app_file = SecureTarFile(
             tar_path,
-            REDACTED_SECRET,
+            gzip=self.compressed,
             bufsize=BUF_SIZE,
             password=self._password,
         )
@@ -784,7 +784,7 @@ class Backup(JobGroup):
 
             with outer_secure_tarfile.create_tar(
                 f"./{tar_name}",
-                REDACTED_SECRET,
+                gzip=self.compressed,
             ) as tar_file:
                 atomic_contents_add(
                     tar_file,
@@ -850,7 +850,7 @@ class Backup(JobGroup):
                 _LOGGER.info("Restore folder %s", name)
                 with SecureTarFile(
                     tar_name,
-                    REDACTED_SECRET,
+                    gzip=self.compressed,
                     bufsize=BUF_SIZE,
                     password=self._password,
                 ) as tar_file:
@@ -919,7 +919,7 @@ class Backup(JobGroup):
         # Backup Home Assistant Core config directory
         homeassistant_file = self._outer_secure_tarfile.create_tar(
             f"./{tar_name}",
-            REDACTED_SECRET,
+            gzip=self.compressed,
         )
 
         await self.sys_homeassistant.backup(homeassistant_file, exclude_database)
@@ -943,7 +943,7 @@ class Backup(JobGroup):
         )
         homeassistant_file = SecureTarFile(
             tar_name,
-            REDACTED_SECRET,
+            gzip=self.compressed,
             bufsize=BUF_SIZE,
             password=self._password,
         )
@@ -1021,7 +1021,7 @@ class Backup(JobGroup):
 
             with outer_secure_tarfile.create_tar(
                 f"./{tar_name}",
-                REDACTED_SECRET,
+                gzip=self.compressed,
             ) as tar_file:
                 # Add mounts.json to tar
                 tarinfo = tarfile.TarInfo(name="mounts.json")
@@ -1074,7 +1074,7 @@ class Backup(JobGroup):
 
             with SecureTarFile(
                 tar_name,
-                REDACTED_SECRET,
+                gzip=self.compressed,
                 bufsize=BUF_SIZE,
                 password=self._password,
             ) as tar_file:

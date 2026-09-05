@@ -1,13 +1,19 @@
 """Test backups."""
 
 from contextlib import AbstractContextManager, nullcontext as does_not_raise
+import io
 from pathlib import Path
 from shutil import copy
 import tarfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-from securetar import AddFileError, InvalidPasswordError, SecureTarReadError
+from securetar import (
+    AddFileError,
+    InvalidPasswordError,
+    SecureTarFile,
+    SecureTarReadError,
+)
 
 from supervisor.apps.app import App
 from supervisor.backups.backup import Backup, BackupLocation
@@ -26,6 +32,107 @@ from supervisor.jobs import JobSchedulerOptions
 from supervisor.mounts.mount import Mount
 
 from tests.common import get_fixture_path
+
+
+@pytest.mark.parametrize("compressed", [True, False])
+@pytest.mark.parametrize("password", [None, "test-backup-password"])
+async def test_backup_components_roundtrip(
+    coresys: CoreSys,
+    install_app_ssh: App,
+    tmp_supervisor_data: Path,
+    compressed: bool,
+    password: str | None,
+):
+    """Roundtrip app, Core, and folder contents through real backup archives."""
+    payload = b"backup component contents\n"
+    media_file = coresys.config.path_media / "roundtrip.txt"
+    media_file.write_bytes(payload)
+
+    async def write_component(archive: SecureTarFile, *_args):
+        def write():
+            with archive as tar:
+                member = tarfile.TarInfo("roundtrip.txt")
+                member.size = len(payload)
+                tar.addfile(member, io.BytesIO(payload))
+
+        await coresys.run_in_executor(write)
+
+    async def read_component(archive: SecureTarFile, *_args):
+        def read():
+            with archive as tar:
+                member = tar.next()
+                assert member.name == "roundtrip.txt"
+                assert tar.extractfile(member).read() == payload
+
+        await coresys.run_in_executor(read)
+
+    async def restore_app(slug: str, archive: SecureTarFile):
+        assert slug == install_app_ssh.slug
+        await read_component(archive)
+
+    backup = Backup(coresys, tmp_supervisor_data / "roundtrip.tar", "test", None)
+    backup.new(
+        "test",
+        "2023-07-21T21:05:00.000000+00:00",
+        BackupType.FULL,
+        password=password,
+        compressed=compressed,
+    )
+
+    with (
+        patch.object(
+            install_app_ssh, "backup", side_effect=write_component
+        ) as app_save,
+        patch.object(
+            coresys.homeassistant, "backup", side_effect=write_component
+        ) as core_save,
+    ):
+        async with backup.create():
+            assert await backup.store_apps([install_app_ssh]) == []
+            await backup.store_homeassistant()
+            await backup.store_folders(["media"])
+        app_save.assert_awaited_once()
+        core_save.assert_awaited_once()
+
+    assert backup.folders == ["media"]
+    assert backup.app_list == [install_app_ssh.slug]
+    ending = ".tar.gz" if compressed else ".tar"
+    with tarfile.open(backup.tarfile) as outer:
+        assert {member.name for member in outer.getmembers()} == {
+            f"{install_app_ssh.slug}{ending}",
+            f"homeassistant{ending}",
+            f"media{ending}",
+            "./backup.json",
+        }
+
+    restored = Backup(coresys, backup.tarfile, "test", None)
+    assert await restored.load()
+    assert restored.compressed is compressed
+    assert restored.protected is bool(password)
+    restored.set_password(password)
+    await restored.validate_backup(None)
+    if password:
+        restored.set_password("wrong-password")
+        with pytest.raises(BackupInvalidError):
+            await restored.validate_backup(None)
+        restored.set_password(password)
+
+    media_file.write_bytes(b"changed after backup")
+    with (
+        patch.object(coresys.apps, "restore", side_effect=restore_app) as app_restore,
+        patch.object(
+            coresys.homeassistant, "restore", side_effect=read_component
+        ) as core_restore,
+        patch.object(coresys.homeassistant.core, "stop"),
+    ):
+        async with restored.open(None):
+            assert await restored.restore_apps([install_app_ssh.slug]) == (True, [])
+            await (await restored.restore_homeassistant())
+            assert await restored.restore_folders(["media"])
+        app_restore.assert_awaited_once()
+        core_restore.assert_awaited_once()
+
+    assert media_file.read_bytes() == payload
 
 
 async def test_new_backup_stays_in_folder(coresys: CoreSys, tmp_path: Path):
