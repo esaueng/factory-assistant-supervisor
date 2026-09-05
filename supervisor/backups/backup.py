@@ -1078,21 +1078,16 @@ class Backup(JobGroup):
                 bufsize=BUF_SIZE,
                 password=self._password,
             ) as tar_file:
-                try:
-                    member = tar_file.getmember("mounts.json")
-                    file_obj = tar_file.extractfile(member)
-                    if file_obj:
-                        mounts_data = json.loads(file_obj.read().decode("utf-8"))
-                except KeyError:
-                    _LOGGER.debug("mounts.json not found in supervisor tar")
-
-                try:
-                    member = tar_file.getmember("docker.json")
-                    file_obj = tar_file.extractfile(member)
-                    if file_obj:
-                        docker_data = json.loads(file_obj.read().decode("utf-8"))
-                except KeyError:
-                    _LOGGER.debug("docker.json not found in supervisor tar")
+                # Encrypted archives are streams and cannot seek backwards after getmember().
+                for member in tar_file:
+                    if member.name not in {"mounts.json", "docker.json"}:
+                        continue
+                    if file_obj := tar_file.extractfile(member):
+                        data = json.loads(file_obj.read().decode("utf-8"))
+                        if member.name == "mounts.json":
+                            mounts_data = data
+                        else:
+                            docker_data = data
 
             return (mounts_data, docker_data)
 

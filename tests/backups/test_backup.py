@@ -647,8 +647,10 @@ async def test_restore_supervisor_config_no_tar(coresys: CoreSys, tmp_path: Path
         assert tasks == []
 
 
+@pytest.mark.parametrize("compressed", [True, False])
+@pytest.mark.parametrize("password", [None, "test-backup-password"])
 async def test_restore_supervisor_config_with_registries(
-    coresys: CoreSys, tmp_path: Path
+    coresys: CoreSys, tmp_path: Path, compressed: bool, password: str | None
 ):
     """Test restoring docker registries from supervisor config in backup."""
     # Configure registries and create a backup
@@ -662,7 +664,13 @@ async def test_restore_supervisor_config_with_registries(
     }
 
     backup = Backup(coresys, tmp_path / "my_backup.tar", "test", None)
-    backup.new("test", "2023-07-21T21:05:00.000000+00:00", BackupType.FULL)
+    backup.new(
+        "test",
+        "2023-07-21T21:05:00.000000+00:00",
+        BackupType.FULL,
+        password=password,
+        compressed=compressed,
+    )
 
     async with backup.create():
         await backup.store_supervisor_config()
