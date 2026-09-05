@@ -97,7 +97,7 @@ async def test_backup_components_roundtrip(
     assert backup.folders == ["media"]
     assert backup.app_list == [install_app_ssh.slug]
     ending = ".tar.gz" if compressed else ".tar"
-    with tarfile.open(backup.tarfile) as outer:
+    with tarfile.open(backup.tarfile, "r:") as outer:
         assert {member.name for member in outer.getmembers()} == {
             f"{install_app_ssh.slug}{ending}",
             f"homeassistant{ending}",
